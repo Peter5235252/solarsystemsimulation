@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { background: url('https://picsum.photos/800/600') no-repeat center/cover; height: 100vh; margin: 0; }
+  .modal {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 300px; height: 300px;
+    transition: opacity 2s;
+    opacity: 0;
+  }
+  .modal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.2);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .modal.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <div class="modal" id="m"></div>
+  <script>
+    setTimeout(() => document.getElementById('m').classList.add('show'), 1000);
+  </script>
+</body>
+</html>

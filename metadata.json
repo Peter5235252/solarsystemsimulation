@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Low Poly Solar System 2",
+  "description": "A fully functional, low-poly 2D rendition of the solar system built for extreme performance on any device.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
