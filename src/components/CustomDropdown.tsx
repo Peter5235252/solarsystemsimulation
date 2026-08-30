@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, Check } from 'lucide-react';
 
@@ -40,12 +41,60 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
 
   const selectedOption = options.find((opt) => String(opt.value) === String(value));
 
+  const updatePosition = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const menuMaxHeight = 320; // max-h-80 = 20rem
+      const spaceBelow = viewportHeight - rect.bottom - 12;
+      const spaceAbove = rect.top - 12;
+      const shouldOpenUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+      setMenuStyle({
+        position: 'fixed',
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+        ...(shouldOpenUp
+          ? { bottom: viewportHeight - rect.top + 6, maxHeight: Math.min(menuMaxHeight, spaceAbove) }
+          : { top: rect.bottom + 6, maxHeight: Math.min(menuMaxHeight, spaceBelow) }),
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      updatePosition();
+      const handleResize = () => updatePosition();
+      window.addEventListener('resize', handleResize);
+      window.addEventListener('scroll', handleResize, true);
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('scroll', handleResize, true);
+      };
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        menuRef.current &&
+        !menuRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+      } else if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        !menuRef.current
+      ) {
         setIsOpen(false);
       }
     };
@@ -70,6 +119,7 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
   return (
     <div className={`relative inline-block w-full text-left ${className}`} ref={containerRef}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => {
           playTapSound?.();
@@ -92,55 +142,51 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
         </motion.div>
       </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ }}
-            animate={{ }}
-            exit={{ opacity: 0 }}
-            transition={uiAnimations ? { duration: 0.1 / uiAnimSpeed } : { duration: 0 }}
-            className={`!absolute left-0 right-0 mt-1.5 z-50 dual-kawase-glass glass-specular shadow-2xl rounded-xl p-1.5 max-h-60 overflow-y-auto divide-y divide-slate-800/40 custom-scrollbar ${menuClassName}`}
-          >
+      {isOpen &&
+        createPortal(
+          <AnimatePresence>
             <motion.div
-              initial={{ y: -6, scale: 0.96 }}
-              animate={{ y: 0, scale: 1 }}
+              ref={menuRef}
+              initial={{ opacity: 0, y: -6, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.96 }}
               transition={uiAnimations ? { duration: 0.18 / uiAnimSpeed, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }}
-              className="w-full h-full"
+              style={menuStyle}
+              className={`dual-kawase-glass glass-specular shadow-2xl rounded-xl p-1.5 overflow-y-auto divide-y divide-slate-800/40 custom-scrollbar ${menuClassName}`}
             >
-            {options.map((option) => {
-              const isSelected = String(option.value) === String(value);
+              {options.map((option) => {
+                const isSelected = String(option.value) === String(value);
 
-              return (
-                <button
-                  key={String(option.value)}
-                  type="button"
-                  disabled={option.disabled}
-                  onClick={() => {
-                    if (option.disabled) return;
-                    playTapSound?.();
-                    onChange(option.value);
-                    setIsOpen(false);
-                  }}
-                  className={`w-full text-left text-xs px-3 py-2 rounded-lg transition-all active:scale-[0.98] active:opacity-80 active:duration-75 flex items-center justify-between gap-2 ${
-                    option.indent ? 'pl-6 text-slate-400 hover:text-slate-200' : 'text-slate-200'
-                  } ${
-                    isSelected
-                      ? 'bg-slate-700/60 text-slate-200 font-semibold border border-slate-600/50'
-                      : 'hover:bg-slate-800/80 hover:text-white'
-                  } ${option.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${
-                    fontMono ? 'font-mono' : ''
-                  }`}
-                >
-                  <span className="truncate">{option.label}</span>
-                  {isSelected && <Check className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={String(option.value)}
+                    type="button"
+                    disabled={option.disabled}
+                    onClick={() => {
+                      if (option.disabled) return;
+                      playTapSound?.();
+                      onChange(option.value);
+                      setIsOpen(false);
+                    }}
+                    className={`w-full text-left text-xs px-3 py-2 rounded-lg transition-all active:scale-[0.98] active:opacity-80 active:duration-75 flex items-center justify-between gap-2 ${
+                      option.indent ? 'pl-6 text-slate-400 hover:text-slate-200' : 'text-slate-200'
+                    } ${
+                      isSelected
+                        ? 'bg-slate-700/60 text-slate-200 font-semibold border border-slate-600/50'
+                        : 'hover:bg-slate-800/80 hover:text-white'
+                    } ${option.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${
+                      fontMono ? 'font-mono' : ''
+                    }`}
+                  >
+                    <span className="truncate">{option.label}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                  </button>
+                );
+              })}
             </motion.div>
-          </motion.div>
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
     </div>
   );
 };
