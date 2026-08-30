@@ -4767,7 +4767,6 @@ useEffect(() => {
     return items;
   }, [t, showOrbits, showLabels, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, graphicsPreset, fpsCap, tempUnit, lang, enableBloom, enableLensFlare, enableCosmicDust, enableVignette, useAI, speedMultiplier === 0, wasdSpeed, aiModel]);
 
-  // FPS cap presets — now exposes options above 360 up to 540 FPS (fixes 144 FPS hallucination, aligns with screenshot + AI prompt)
   const fpsPresetOptions: DropdownOption[] = useMemo(() => [
     { value: 60, label: '60 FPS' },
     { value: 75, label: '75 FPS' },
