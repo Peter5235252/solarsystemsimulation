@@ -106,6 +106,8 @@ export function normalizeAction(rawAction: any): AIAction | null {
       else if (n === 'enablelensflare' || n === 'lensflare') cleanAction.name = 'enableLensFlare';
       else if (n === 'enablecosmicdust' || n === 'cosmicdust') cleanAction.name = 'enableCosmicDust';
       else if (n === 'enablevignette' || n === 'vignette') cleanAction.name = 'enableVignette';
+      else if (n === 'fpscap' || n === 'fps' || n === 'framerate' || n === 'frameratecap' || n === 'maxfps') cleanAction.name = 'fpsCap';
+      else if (n === 'wasdspeed' || n === 'cameraspeed' || n === 'movespeed') cleanAction.name = 'wasdSpeed';
     }
   } else if (type === 'batch') {
     if (Array.isArray(cleanAction.actions)) {

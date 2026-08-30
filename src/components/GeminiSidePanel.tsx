@@ -242,7 +242,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
    - "enableLensFlare": true|false
    - "enableCosmicDust": true|false
    - "enableVignette": true|false
-   - "fpsCap": 30|60|120|144
+   - "fpsCap": 60|75|90|120|144|240|360|540
    - "wasdSpeed": 0.5..5.0
 
 10. APPLY GRAPHICS PRESET:
