@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Globe, Sun, Aperture, Rocket, Sparkles, SlidersHorizontal, ShieldCheck, Thermometer, Weight, Focus, CircleDot, Moon } from 'lucide-react';
+import { CONSTELLATIONS } from '../data/constellations';
 
 export interface CelestialBodyData {
   id: string;
@@ -26,91 +27,19 @@ export interface CelestialInfoData {
 interface CelestialMiniPreviewProps {
   body: CelestialBodyData | null;
   info?: CelestialInfoData | null;
-  tempUnit?: 'C' | 'F';
+  tempUnit?: 'C' | 'F' | 'K';
+  onToggleTempUnit?: () => void;
   onFocusBody?: (id: string) => void;
   onCompareBody?: (id: string) => void;
   onAskAIBody?: (name: string) => void;
   playTapSound?: () => void;
 }
 
-// Constellation Data Registry for High-Accuracy Previews
-const CONSTELLATIONS_DATA: Record<string, { points: { x: number; y: number; name?: string; mag?: number }[]; edges: [number, number][]; color: string }> = {
-  ursa_major: {
-    color: '#38bdf8',
-    points: [
-      { x: 45, y: 12, name: 'Dubhe', mag: 4 },
-      { x: 46, y: -2, name: 'Merak', mag: 4 },
-      { x: 13, y: -8, name: 'Phecda', mag: 3.5 },
-      { x: 0, y: 0, name: 'Megrez', mag: 3 },
-      { x: -24, y: -3, name: 'Alioth', mag: 4.5 },
-      { x: -43, y: -5, name: 'Mizar', mag: 4.5 },
-      { x: -58, y: -19, name: 'Alkaid', mag: 4.5 }
-    ],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]]
-  },
-  orion: {
-    color: '#facc15',
-    points: [
-      { x: -19, y: 34, name: 'Betelgeuse', mag: 5 },
-      { x: 11, y: 30, name: 'Bellatrix', mag: 4 },
-      { x: -5, y: -3, name: 'Alnitak', mag: 3.5 },
-      { x: 0, y: 0, name: 'Alnilam', mag: 3.5 },
-      { x: 4, y: 4, name: 'Mintaka', mag: 3.5 },
-      { x: -12, y: -34, name: 'Saiph', mag: 4 },
-      { x: 22, y: -28, name: 'Rigel', mag: 5 }
-    ],
-    edges: [[0, 2], [1, 4], [2, 3], [3, 4], [2, 5], [4, 6]]
-  },
-  cassiopeia: {
-    color: '#c084fc',
-    points: [
-      { x: -29, y: 6, name: 'Segin', mag: 3.5 },
-      { x: -14, y: -1, name: 'Ruchbah', mag: 4 },
-      { x: 0, y: 0, name: 'Gamma Cas', mag: 4.5 },
-      { x: 8, y: -8, name: 'Schedar', mag: 4.5 },
-      { x: 24, y: -3, name: 'Caph', mag: 4 }
-    ],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 4]]
-  },
-  cygnus: {
-    color: '#fb7185',
-    points: [
-      { x: -14, y: 15, name: 'Deneb', mag: 5 },
-      { x: 0, y: 0, name: 'Sadr', mag: 4 },
-      { x: 39, y: -37, name: 'Albireo', mag: 3.5 },
-      { x: 28, y: 15, name: 'Fawaris', mag: 3.5 },
-      { x: -18, y: -19, name: 'Gienah', mag: 3.5 }
-    ],
-    edges: [[0, 1], [1, 2], [3, 1], [1, 4]]
-  },
-  scorpius: {
-    color: '#f87171',
-    points: [
-      { x: 25, y: 12 }, { x: 25, y: 22 }, { x: 20, y: 28 },
-      { x: 0, y: 0, name: 'Antares', mag: 5 },
-      { x: -5, y: -8 }, { x: -18, y: -26 }, { x: -18, y: -36 },
-      { x: -20, y: -50 }, { x: -35, y: -54 }, { x: -54, y: -52 },
-      { x: -64, y: -42 }, { x: -58, y: -38 }, { x: -52, y: -32, name: 'Shaula', mag: 4 }
-    ],
-    edges: [[0, 3], [1, 3], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], [11, 12]]
-  },
-  crux: {
-    color: '#818cf8',
-    points: [
-      { x: 5, y: 32, name: 'Acrux', mag: 5 },
-      { x: -28, y: 2, name: 'Mimosa', mag: 4.5 },
-      { x: -5, y: -32, name: 'Gacrux', mag: 4.5 },
-      { x: 22, y: -2, name: 'Delta Crucis', mag: 3.5 },
-      { x: 12, y: 15, name: 'Epsilon Crucis', mag: 2.5 }
-    ],
-    edges: [[0, 2], [1, 3]]
-  }
-};
-
-export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
+export const CelestialMiniPreviewComponent: React.FC<CelestialMiniPreviewProps> = ({
   body,
   info,
   tempUnit = 'C',
+  onToggleTempUnit,
   onFocusBody,
   onCompareBody,
   onAskAIBody,
@@ -118,7 +47,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // High-Accuracy Photorealistic Canvas Rendering Engine
+  // High-Accuracy Photorealistic Canvas Rendering Engine (Optimized)
   useEffect(() => {
     if (!canvasRef.current || !body) return;
     const canvas = canvasRef.current;
@@ -127,11 +56,29 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
 
     let animId: number;
     let time = 0;
+    let lastRenderTime = 0;
 
-    const render = () => {
-      time += 0.016;
-      const width = canvas.width;
-      const height = canvas.height;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const displayWidth = 280;
+    const displayHeight = 160;
+
+    if (canvas.width !== displayWidth * dpr || canvas.height !== displayHeight * dpr) {
+      canvas.width = displayWidth * dpr;
+      canvas.height = displayHeight * dpr;
+    }
+
+    const render = (now: number) => {
+      animId = requestAnimationFrame(render);
+      if (now - lastRenderTime < 33) return; // 30 FPS cap for preview keeps rendering smooth without CPU overhead
+      lastRenderTime = now;
+      time += 0.033;
+
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+
+      const width = displayWidth;
+      const height = displayHeight;
       const cx = width / 2;
       const cy = height / 2;
 
@@ -139,18 +86,18 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
 
       // Deep space background with subtle nebular glow matching body color
       const bodyColor = body.color || '#38bdf8';
-      const bgGlow = ctx.createRadialGradient(cx, cy, 10, cx, cy, width * 0.7);
-      bgGlow.addColorStop(0, `${bodyColor}1e`);
-      bgGlow.addColorStop(0.5, '#03071233');
-      bgGlow.addColorStop(1, '#00000000');
+      const bgGlow = ctx.createRadialGradient(cx, cy, 10, cx, cy, width * 0.75);
+      bgGlow.addColorStop(0, `${bodyColor}1f`);
+      bgGlow.addColorStop(0.5, '#03071240');
+      bgGlow.addColorStop(1, '#02061700');
       ctx.fillStyle = bgGlow;
       ctx.fillRect(0, 0, width, height);
 
-      // Distant twinkling background stars
-      for (let i = 0; i < 22; i++) {
-        const sx = (Math.sin(i * 77 + time * 0.15) * 0.5 + 0.5) * width;
-        const sy = (Math.cos(i * 41 + time * 0.12) * 0.5 + 0.5) * height;
-        const sa = Math.sin(time * 1.8 + i * 2) * 0.4 + 0.5;
+      // Distant background starfield
+      for (let i = 0; i < 28; i++) {
+        const sx = (Math.sin(i * 77 + 0.15) * 0.5 + 0.5) * width;
+        const sy = (Math.cos(i * 41 + 0.12) * 0.5 + 0.5) * height;
+        const sa = Math.sin(time * 1.8 + i * 2) * 0.35 + 0.55;
         ctx.fillStyle = `rgba(255, 255, 255, ${sa * 0.65})`;
         ctx.fillRect(sx, sy, 1.2, 1.2);
       }
@@ -158,7 +105,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
       ctx.save();
       ctx.translate(cx, cy);
 
-      const R = Math.min(52, Math.max(22, (body.radius || 14) * 1.55));
+      const R = Math.min(50, Math.max(24, (body.radius || 14) * 1.5));
 
       // -------------------------------------------------------------------
       // 1. BLACK HOLE (Sagittarius A*, M87*, Cygnus X-1)
@@ -186,7 +133,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
           ctx.save();
           ctx.rotate(tilt);
           const jetLength = R * (isM87 ? 4.2 : 3.2);
-          const jetWidth = R * 0.4;
+          const jetWidth = R * 0.38;
 
           [-1, 1].forEach(dir => {
             const startY = dir * R * 0.6;
@@ -194,8 +141,8 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
 
             const jetGrad = ctx.createLinearGradient(0, startY, 0, endY);
             jetGrad.addColorStop(0, '#ffffff');
-            jetGrad.addColorStop(0.3, primaryCol);
-            jetGrad.addColorStop(0.7, secondaryCol);
+            jetGrad.addColorStop(0.2, primaryCol);
+            jetGrad.addColorStop(0.65, secondaryCol);
             jetGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
             ctx.beginPath();
@@ -285,7 +232,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
         const pulse = Math.sin(time * 2.5) * 2.5;
 
         // Multi-layer Solar Corona Radiance
-        const coronaGrad = ctx.createRadialGradient(0, 0, R * 0.5, 0, 0, R + 28 + pulse);
+        const coronaGrad = ctx.createRadialGradient(0, 0, R * 0.5, 0, 0, R + 30 + pulse);
         coronaGrad.addColorStop(0, '#ffffff');
         coronaGrad.addColorStop(0.2, '#fef08a');
         coronaGrad.addColorStop(0.5, '#f59e0b');
@@ -293,17 +240,17 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
         coronaGrad.addColorStop(1, '#00000000');
 
         ctx.beginPath();
-        ctx.arc(0, 0, R + 28 + pulse, 0, Math.PI * 2);
+        ctx.arc(0, 0, R + 30 + pulse, 0, Math.PI * 2);
         ctx.fillStyle = coronaGrad;
         ctx.fill();
 
         // Solar Prominence Plasma Arcs
-        for (let p = 0; p < 5; p++) {
-          const pAngle = time * 0.4 + (p * Math.PI * 2) / 5;
+        for (let p = 0; p < 6; p++) {
+          const pAngle = time * 0.4 + (p * Math.PI * 2) / 6;
           const px1 = Math.cos(pAngle) * R;
           const py1 = Math.sin(pAngle) * R;
-          const px2 = Math.cos(pAngle + 0.3) * (R + 12 + Math.sin(time * 3 + p) * 4);
-          const py2 = Math.sin(pAngle + 0.3) * (R + 12 + Math.sin(time * 3 + p) * 4);
+          const px2 = Math.cos(pAngle + 0.3) * (R + 14 + Math.sin(time * 3 + p) * 5);
+          const py2 = Math.sin(pAngle + 0.3) * (R + 14 + Math.sin(time * 3 + p) * 5);
 
           ctx.beginPath();
           ctx.moveTo(px1, py1);
@@ -326,11 +273,12 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
         ctx.fill();
 
         // Solar Granulation / Sunspots
-        ctx.fillStyle = 'rgba(180, 83, 9, 0.45)';
+        ctx.fillStyle = 'rgba(180, 83, 9, 0.55)';
         ctx.beginPath();
         ctx.arc(-R * 0.3, R * 0.1, 3.5, 0, Math.PI * 2);
         ctx.arc(-R * 0.2, R * 0.15, 2.5, 0, Math.PI * 2);
         ctx.arc(R * 0.25, -R * 0.3, 4, 0, Math.PI * 2);
+        ctx.arc(R * 0.35, -R * 0.25, 2.5, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -340,8 +288,8 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
       else if (body.id === 'earth') {
         // Rayleigh Scattering Atmosphere Halo
         ctx.beginPath();
-        ctx.arc(0, 0, R + 5, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+        ctx.arc(0, 0, R + 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
         ctx.fill();
 
         // Ocean Base Sphere
@@ -379,10 +327,11 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
         ctx.fillStyle = '#f8fafc';
         ctx.beginPath();
         ctx.arc(0, -R + 3, 10, 0, Math.PI * 2);
+        ctx.arc(0, R - 3, 8, 0, Math.PI * 2);
         ctx.fill();
 
         // Swirling Clouds Layer
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
         ctx.beginPath();
         ctx.ellipse(Math.cos(rot * 1.3) * 10, -8, R * 0.7, 5, 0.1, 0, Math.PI * 2);
         ctx.ellipse(Math.cos(rot * 1.1 + 1.5) * 12, 6, R * 0.6, 4, -0.1, 0, Math.PI * 2);
@@ -401,7 +350,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
         ctx.restore();
 
         // Orbiting Moon
-        const mDist = R + 20;
+        const mDist = R + 22;
         ctx.beginPath();
         ctx.arc(0, 0, mDist, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
@@ -419,7 +368,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
       }
 
       // -------------------------------------------------------------------
-      // 4. EARTH'S MOON
+      // 4. EARTH'S MOON (LUNA)
       // -------------------------------------------------------------------
       else if (body.id === 'moon') {
         ctx.beginPath();
@@ -469,7 +418,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
       }
 
       // -------------------------------------------------------------------
-      // 5. MERCURY & VENUS & MARS
+      // 5. MERCURY, VENUS, MARS
       // -------------------------------------------------------------------
       else if (body.id === 'mercury' || body.id === 'venus' || body.id === 'mars') {
         const isMercury = body.id === 'mercury';
@@ -508,7 +457,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
             ctx.fillRect(-R, y, R * 2, R * 0.35);
           });
         } else {
-          // Mars Basaltic Regions (Syrtis Major)
+          // Mars Basaltic Regions (Syrtis Major & Valles Marineris)
           ctx.fillStyle = '#991b1b';
           ctx.beginPath();
           ctx.ellipse(-4, 2, R * 0.5, R * 0.3, 0.2, 0, Math.PI * 2);
@@ -518,7 +467,7 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
           // Polar Ice Cap
           ctx.fillStyle = '#ffffff';
           ctx.beginPath();
-          ctx.arc(0, -R + 2, 7, 0, Math.PI * 2);
+          ctx.arc(0, -R + 2, 8, 0, Math.PI * 2);
           ctx.fill();
         }
 
@@ -836,137 +785,385 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
       // -------------------------------------------------------------------
       else if (['iss', 'voyager1', 'voyager2', 'jwst', 'cassini', 'apollo11', 'hubble', 'newhorizons'].includes(body.id)) {
         ctx.rotate(time * 0.15);
+        const s = 1.3;
 
-        if (body.id === 'jwst') {
-          // JWST 5-Layer Sunshield Kite
-          ctx.fillStyle = '#a855f7';
-          ctx.beginPath();
-          ctx.moveTo(0, -R * 1.1);
-          ctx.lineTo(R * 0.9, 0);
-          ctx.lineTo(0, R * 1.1);
-          ctx.lineTo(-R * 0.9, 0);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = '#e9d5ff';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-
-          // Golden Hexagonal Mirror Array
-          for (let i = 0; i < 6; i++) {
-            const ma = (i * Math.PI) / 3;
-            const mx = Math.cos(ma) * 8;
-            const my = Math.sin(ma) * 8;
-            ctx.beginPath();
-            ctx.arc(mx, my, 4, 0, Math.PI * 2);
-            ctx.fillStyle = '#fbbf24';
-            ctx.fill();
-            ctx.strokeStyle = '#d97706';
-            ctx.stroke();
-          }
-          ctx.beginPath();
-          ctx.arc(0, 0, 4, 0, Math.PI * 2);
-          ctx.fillStyle = '#fef08a';
-          ctx.fill();
-        } else if (body.id === 'iss') {
-          // ISS
+        if (body.id === 'iss') {
+          // 1. Central Metallic Truss
           ctx.fillStyle = '#cbd5e1';
-          ctx.fillRect(-R * 1.1, -3, R * 2.2, 6);
+          ctx.fillRect(-22 * s, -1.8 * s, 44 * s, 3.6 * s);
 
-          // Bronze solar panels
-          [-R * 0.8, R * 0.3].forEach(x => {
-            ctx.fillStyle = '#f59e0b';
-            ctx.fillRect(x, -R * 0.9, R * 0.5, R * 1.8);
-            ctx.strokeStyle = '#78350f';
-            ctx.strokeRect(x, -R * 0.9, R * 0.5, R * 1.8);
+          // 2. Solar Arrays (8 bronze/gold photovoltaic wings with cell grid)
+          const arrayWidth = 8 * s;
+          const arrayHeight = 16 * s;
+
+          [-18 * s, -9 * s, 9 * s, 18 * s].forEach(x => {
+            [-17 * s, 1 * s].forEach(y => {
+              const solGrad = ctx.createLinearGradient(x, y, x + arrayWidth, y + arrayHeight);
+              solGrad.addColorStop(0, '#b45309');
+              solGrad.addColorStop(0.5, '#f59e0b');
+              solGrad.addColorStop(1, '#78350f');
+
+              ctx.fillStyle = solGrad;
+              ctx.fillRect(x - arrayWidth * 0.5, y, arrayWidth, arrayHeight);
+
+              ctx.strokeStyle = 'rgba(15, 23, 42, 0.6)';
+              ctx.lineWidth = 0.6;
+              ctx.strokeRect(x - arrayWidth * 0.5, y, arrayWidth, arrayHeight);
+
+              // Grid lines inside solar panel
+              ctx.beginPath();
+              ctx.moveTo(x - arrayWidth * 0.5, y + arrayHeight * 0.5);
+              ctx.lineTo(x + arrayWidth * 0.5, y + arrayHeight * 0.5);
+              ctx.stroke();
+            });
           });
 
-          // Module
+          // 3. Radiator Panels
           ctx.fillStyle = '#f8fafc';
-          ctx.fillRect(-8, -8, 16, 16);
+          [-4.5 * s, 4.5 * s].forEach(x => {
+            ctx.fillRect(x - 1.4 * s, -13 * s, 2.8 * s, 9 * s);
+          });
 
-          // LED beacon
-          const flash = Math.sin(time * 8) > 0;
-          ctx.fillStyle = flash ? '#ef4444' : '#22c55e';
+          // 4. Pressurized Modules (Habitation & Labs in T-shape)
+          ctx.fillStyle = '#f1f5f9';
           ctx.beginPath();
-          ctx.arc(0, -9, 2, 0, Math.PI * 2);
+          ctx.roundRect(-3 * s, -8 * s, 6 * s, 16 * s, 1.8 * s);
+          ctx.fill();
+
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(-7 * s, -2.5 * s, 14 * s, 5 * s);
+
+          // Cupola / Window dots
+          ctx.fillStyle = '#38bdf8';
+          ctx.beginPath();
+          ctx.arc(0, 0, 1.5 * s, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 5. Navigation Beacon LEDs
+          const flash = Math.sin(time * 8) > 0;
+          ctx.fillStyle = '#ef4444'; // Red port light
+          ctx.beginPath();
+          ctx.arc(-22 * s, 0, 1.5 * s, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#22c55e'; // Green starboard light
+          ctx.beginPath();
+          ctx.arc(22 * s, 0, 1.5 * s, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (flash) {
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(0, -8 * s, 1.8 * s, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else if (body.id === 'jwst') {
+          // JWST
+          // 1. 5-Layer Diamond Sunshield
+          const sunGrad = ctx.createLinearGradient(0, -18 * s, 0, 16 * s);
+          sunGrad.addColorStop(0, '#f43f5e');
+          sunGrad.addColorStop(0.3, '#fbbf24');
+          sunGrad.addColorStop(0.7, '#cbd5e1');
+          sunGrad.addColorStop(1, '#a855f7');
+
+          [0, 1.2 * s, 2.4 * s].forEach((offset, idx) => {
+            ctx.beginPath();
+            ctx.moveTo(0, -20 * s + offset);
+            ctx.lineTo(14 * s - offset * 0.5, 0);
+            ctx.lineTo(0, 17 * s - offset);
+            ctx.lineTo(-14 * s + offset * 0.5, 0);
+            ctx.closePath();
+            if (idx === 0) {
+              ctx.fillStyle = sunGrad;
+              ctx.fill();
+            }
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 0.6;
+            ctx.stroke();
+          });
+
+          // 2. Primary Mirror Assembly (18 Beryllium-Gold Hexagons)
+          const rHex = 2.4 * s;
+          const drawHexTile = (hx: number, hy: number) => {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+              const angle = (Math.PI / 3) * i - Math.PI / 6;
+              const px = hx + rHex * Math.cos(angle);
+              const py = hy + rHex * Math.sin(angle);
+              if (i === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fillStyle = '#f59e0b';
+            ctx.fill();
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          };
+
+          const mCenterY = -4 * s;
+          const dx = rHex * 1.732;
+          const dy = rHex * 1.5;
+
+          [[-dx, -dy], [0, -dy * 2], [dx, -dy], [-dx, dy], [0, dy * 2], [dx, dy]].forEach(([hx, hy]) => {
+            drawHexTile(hx, mCenterY + hy);
+          });
+          [[-dx * 2, 0], [dx * 2, 0], [-dx, -dy * 3], [dx, -dy * 3], [-dx, dy * 3], [dx, dy * 3], [-dx * 2, -dy * 2], [dx * 2, -dy * 2], [-dx * 2, dy * 2], [dx * 2, dy * 2]].forEach(([hx, hy]) => {
+            drawHexTile(hx, mCenterY + hy);
+          });
+
+          ctx.fillStyle = '#0f172a';
+          ctx.beginPath();
+          ctx.arc(0, mCenterY, rHex * 0.9, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Secondary Mirror Tripod
+          ctx.strokeStyle = '#334155';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(-8 * s, mCenterY + 4 * s); ctx.lineTo(0, mCenterY - 12 * s);
+          ctx.moveTo(8 * s, mCenterY + 4 * s); ctx.lineTo(0, mCenterY - 12 * s);
+          ctx.moveTo(0, mCenterY + 8 * s); ctx.lineTo(0, mCenterY - 12 * s);
+          ctx.stroke();
+
+          ctx.fillStyle = '#f59e0b';
+          ctx.beginPath();
+          ctx.arc(0, mCenterY - 12 * s, 1.5 * s, 0, Math.PI * 2);
           ctx.fill();
         } else if (body.id === 'hubble') {
           // Hubble
           ctx.fillStyle = '#0284c7';
-          ctx.fillRect(-R * 1.1, -4, R * 0.6, 8);
-          ctx.fillRect(R * 0.5, -4, R * 0.6, 8);
+          ctx.fillRect(-20 * s, -3 * s, 13 * s, 6 * s);
+          ctx.fillRect(7 * s, -3 * s, 13 * s, 6 * s);
 
-          ctx.fillStyle = '#cbd5e1';
-          ctx.fillRect(-6, -R * 0.8, 12, R * 1.6);
-          ctx.fillStyle = '#0f172a';
-          ctx.beginPath();
-          ctx.arc(0, -R * 0.8, 5, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (['voyager1', 'voyager2', 'newhorizons', 'cassini'].includes(body.id)) {
-          // Voyager / Probe Dish
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.ellipse(0, -4, R * 0.8, R * 0.45, 0, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 0.6;
+          ctx.strokeRect(-20 * s, -3 * s, 13 * s, 6 * s);
+          ctx.strokeRect(7 * s, -3 * s, 13 * s, 6 * s);
+
+          const hubGrad = ctx.createLinearGradient(-4.5 * s, 0, 4.5 * s, 0);
+          hubGrad.addColorStop(0, '#f8fafc');
+          hubGrad.addColorStop(0.5, '#cbd5e1');
+          hubGrad.addColorStop(1, '#475569');
+
+          ctx.fillStyle = hubGrad;
+          ctx.fillRect(-4.5 * s, -14 * s, 9 * s, 28 * s);
+
           ctx.strokeStyle = '#94a3b8';
-          ctx.stroke();
+          ctx.lineWidth = 1;
+          [-9 * s, -4.5 * s, 0, 4.5 * s, 9 * s].forEach(y => {
+            ctx.beginPath();
+            ctx.moveTo(-4.5 * s, y);
+            ctx.lineTo(4.5 * s, y);
+            ctx.stroke();
+          });
 
-          ctx.fillStyle = '#eab308';
-          ctx.fillRect(-5, 2, 10, 8);
-        } else {
-          // Apollo 11
-          ctx.fillStyle = '#f8fafc';
+          // Open Aperture Door Flap
+          ctx.fillStyle = '#cbd5e1';
           ctx.beginPath();
-          ctx.moveTo(0, -R * 0.7);
-          ctx.lineTo(6, 0);
-          ctx.lineTo(-6, 0);
+          ctx.moveTo(-4.5 * s, -14 * s);
+          ctx.lineTo(-9 * s, -20 * s);
+          ctx.lineTo(-2.5 * s, -20 * s);
+          ctx.lineTo(-4.5 * s, -14 * s);
           ctx.closePath();
           ctx.fill();
+
+          ctx.fillStyle = '#0f172a';
+          ctx.beginPath();
+          ctx.ellipse(0, -14 * s, 4.2 * s, 1.8 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#38bdf8';
+          ctx.beginPath();
+          ctx.arc(0, -14 * s, 2 * s, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (body.id === 'apollo11') {
+          // Apollo 11
+          // Service Module
+          const smGrad = ctx.createLinearGradient(-4.5 * s, 0, 4.5 * s, 0);
+          smGrad.addColorStop(0, '#cbd5e1');
+          smGrad.addColorStop(0.5, '#f8fafc');
+          smGrad.addColorStop(1, '#64748b');
+
+          ctx.fillStyle = smGrad;
+          ctx.fillRect(-4.5 * s, -2 * s, 9 * s, 12 * s);
+
+          // Engine Nozzle
+          ctx.fillStyle = '#334155';
+          ctx.beginPath();
+          ctx.moveTo(-2.8 * s, 10 * s);
+          ctx.lineTo(-4.5 * s, 17 * s);
+          ctx.lineTo(4.5 * s, 17 * s);
+          ctx.lineTo(2.8 * s, 10 * s);
+          ctx.closePath();
+          ctx.fill();
+
+          // Engine Plume Glow
+          const plume = ctx.createLinearGradient(0, 17 * s, 0, 24 * s);
+          plume.addColorStop(0, 'rgba(56, 189, 248, 0.85)');
+          plume.addColorStop(1, 'rgba(56, 189, 248, 0)');
+          ctx.fillStyle = plume;
+          ctx.beginPath();
+          ctx.moveTo(-3.5 * s, 17 * s);
+          ctx.lineTo(0, 24 * s);
+          ctx.lineTo(3.5 * s, 17 * s);
+          ctx.closePath();
+          ctx.fill();
+
+          // Command Module (Conical Capsule)
+          ctx.fillStyle = '#f8fafc';
+          ctx.beginPath();
+          ctx.moveTo(0, -9 * s);
+          ctx.lineTo(4 * s, -2 * s);
+          ctx.lineTo(-4 * s, -2 * s);
+          ctx.closePath();
+          ctx.fill();
+
+          // Lunar Module Eagle
           ctx.fillStyle = '#f59e0b';
-          ctx.fillRect(-6, 0, 12, 10);
+          ctx.fillRect(-4.5 * s, -15 * s, 9 * s, 6 * s);
+          ctx.strokeStyle = '#fef08a';
+          ctx.lineWidth = 0.6;
+          ctx.strokeRect(-4.5 * s, -15 * s, 9 * s, 6 * s);
+        } else if (body.id === 'cassini') {
+          // Cassini-Huygens
+          const casDish = ctx.createRadialGradient(0, -7 * s, 0, 0, -7 * s, 10 * s);
+          casDish.addColorStop(0, '#ffffff');
+          casDish.addColorStop(1, '#cbd5e1');
+
+          ctx.fillStyle = casDish;
+          ctx.beginPath();
+          ctx.ellipse(0, -7 * s, 10 * s, 5.5 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+
+          ctx.fillStyle = '#d97706';
+          ctx.fillRect(-4 * s, -1 * s, 8 * s, 11 * s);
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(-4 * s, -1 * s, 8 * s, 11 * s);
+
+          // Huygens Probe
+          ctx.fillStyle = '#94a3b8';
+          ctx.beginPath();
+          ctx.ellipse(7 * s, 3 * s, 4 * s, 2.2 * s, Math.PI / 6, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Magnetometer Boom
+          ctx.strokeStyle = '#475569';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(-4 * s, 2 * s);
+          ctx.lineTo(-20 * s, -9 * s);
+          ctx.stroke();
+        } else if (['voyager1', 'voyager2'].includes(body.id)) {
+          // Voyager
+          const dishGrad = ctx.createRadialGradient(0, -4 * s, 0, 0, -4 * s, 12 * s);
+          dishGrad.addColorStop(0, '#ffffff');
+          dishGrad.addColorStop(0.7, '#cbd5e1');
+          dishGrad.addColorStop(1, '#64748b');
+
+          ctx.fillStyle = dishGrad;
+          ctx.beginPath();
+          ctx.ellipse(0, -4 * s, 12 * s, 6.5 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+
+          ctx.strokeStyle = '#334155';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(-7 * s, -4 * s); ctx.lineTo(0, -12 * s);
+          ctx.moveTo(7 * s, -4 * s); ctx.lineTo(0, -12 * s);
+          ctx.stroke();
+
+          ctx.fillStyle = '#cbd5e1';
+          ctx.fillRect(-1.5 * s, -13 * s, 3 * s, 2.5 * s);
+
+          ctx.fillStyle = '#f1f5f9';
+          ctx.beginPath();
+          ctx.arc(0, 3 * s, 5.5 * s, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = '#475569';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(-5 * s, 3 * s); ctx.lineTo(-18 * s, 10 * s);
+          ctx.moveTo(5 * s, 3 * s); ctx.lineTo(16 * s, 9 * s);
+          ctx.stroke();
+        } else {
+          // New Horizons / Generic Probe
+          ctx.fillStyle = '#f59e0b';
+          ctx.beginPath();
+          ctx.moveTo(0, -12 * s);
+          ctx.lineTo(8 * s, 8 * s);
+          ctx.lineTo(-8 * s, 8 * s);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 7 * s, 4 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
 
       // -------------------------------------------------------------------
       // 12. CONSTELLATIONS
       // -------------------------------------------------------------------
-      else if (CONSTELLATIONS_DATA[body.id] || ['orion', 'ursa_major', 'cassiopeia', 'scorpius', 'cygnus', 'crux', 'canis_major', 'lyra', 'virgo', 'pegasus'].includes(body.id)) {
-        const cData = CONSTELLATIONS_DATA[body.id] || CONSTELLATIONS_DATA.orion;
-        const col = cData.color || bodyColor;
+      else if (CONSTELLATIONS.some(c => c.id === body.id) || ['orion', 'ursa_major', 'cassiopeia', 'scorpius', 'cygnus', 'crux'].includes(body.id)) {
+        const foundConst = CONSTELLATIONS.find(c => c.id === body.id) || CONSTELLATIONS[0];
+        const col = foundConst.color || bodyColor;
+
+        // Auto-fit scale factor for constellation coordinates
+        const scaleFactor = 1.35;
 
         // Draw connecting lines
         ctx.strokeStyle = `${col}d0`;
         ctx.lineWidth = 1.6;
-        ctx.setLineDash([3, 3]);
+        ctx.setLineDash([4, 4]);
         ctx.beginPath();
-        cData.edges.forEach(([p1_idx, p2_idx]) => {
-          const p1 = cData.points[p1_idx];
-          const p2 = cData.points[p2_idx];
+        foundConst.edges.forEach(([p1_idx, p2_idx]) => {
+          const p1 = foundConst.points[p1_idx];
+          const p2 = foundConst.points[p2_idx];
           if (p1 && p2) {
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
+            ctx.moveTo(p1.x * scaleFactor, p1.y * scaleFactor);
+            ctx.lineTo(p2.x * scaleFactor, p2.y * scaleFactor);
           }
         });
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Draw star nodes
-        cData.points.forEach(p => {
-          const size = (p.mag || 3.5) * 0.85;
+        // Draw star nodes with pulsating magnitude glow
+        foundConst.points.forEach(p => {
+          const px = p.x * scaleFactor;
+          const py = p.y * scaleFactor;
+          const mag = p.mag || 3.5;
+          const size = Math.max(2, mag * 0.9);
+          const pulse = Math.sin(time * 2.5 + px * 0.1) * 0.2 + 0.9;
+
           ctx.beginPath();
-          ctx.arc(p.x, p.y, size * 1.5, 0, Math.PI * 2);
-          ctx.fillStyle = `${col}40`;
+          ctx.arc(px, py, size * 2.2 * pulse, 0, Math.PI * 2);
+          ctx.fillStyle = `${col}35`;
           ctx.fill();
 
           ctx.beginPath();
-          ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+          ctx.arc(px, py, size, 0, Math.PI * 2);
           ctx.fillStyle = '#ffffff';
           ctx.fill();
+
+          if (p.name) {
+            ctx.font = '9px "JetBrains Mono", monospace';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+            ctx.fillText(p.name, px + size + 3, py + 3);
+          }
         });
       }
 
       // -------------------------------------------------------------------
-      // 13. DEFAULT CRATERED PLANET / ASTEROID
+      // 13. DEFAULT CRATERED CELESTIAL BODY / ASTEROID
       // -------------------------------------------------------------------
       else {
         ctx.beginPath();
@@ -979,7 +1176,6 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
         ctx.arc(0, 0, R, 0, Math.PI * 2);
         ctx.clip();
 
-        // Crater impacts
         ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
         ctx.beginPath();
         ctx.arc(-R * 0.3, -R * 0.2, R * 0.25, 0, Math.PI * 2);
@@ -987,7 +1183,6 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
         ctx.arc(-R * 0.1, R * 0.4, R * 0.15, 0, Math.PI * 2);
         ctx.fill();
 
-        // 3D Shading
         const shade = ctx.createRadialGradient(-R * 0.35, -R * 0.35, R * 0.1, 0, 0, R);
         shade.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
         shade.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
@@ -1001,11 +1196,10 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
       }
 
       ctx.restore();
-
-      animId = requestAnimationFrame(render);
+      ctx.restore();
     };
 
-    render();
+    animId = requestAnimationFrame(render);
 
     return () => {
       cancelAnimationFrame(animId);
@@ -1029,11 +1223,24 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
 
   // Convert temperature if present
   let displayTemp = info?.temp || 'N/A';
-  if (info?.temp && tempUnit === 'F') {
-    displayTemp = info.temp.replace(/(-?\d+)(°C)/g, (_, num) => {
-      const f = Math.round((parseInt(num, 10) * 9) / 5 + 32);
-      return `${f}°F`;
-    });
+  if (info?.temp && tempUnit !== 'C') {
+    if (tempUnit === 'F') {
+      displayTemp = info.temp
+        .replace(/(\d+(?:\.\d+)?)\s*M\s*°C/gi, (_, num) => `${Math.round(parseFloat(num) * 1.8 * 10) / 10}M °F`)
+        .replace(/(-?\d+(?:,\d+)?(?:\.\d+)?)\s*°C/g, (_, num) => {
+          const val = parseFloat(num.replace(/,/g, ''));
+          if (isNaN(val)) return `${num}°F`;
+          return `${Math.round((val * 9) / 5 + 32).toLocaleString()}°F`;
+        });
+    } else if (tempUnit === 'K') {
+      displayTemp = info.temp
+        .replace(/(\d+(?:\.\d+)?)\s*M\s*°C/gi, (_, num) => `${num}M K`)
+        .replace(/(-?\d+(?:,\d+)?(?:\.\d+)?)\s*°C/g, (_, num) => {
+          const val = parseFloat(num.replace(/,/g, ''));
+          if (isNaN(val)) return `${num} K`;
+          return `${Math.max(0, Math.round(val + 273.15)).toLocaleString()} K`;
+        });
+    }
   }
 
   return (
@@ -1113,9 +1320,25 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
           <span className="font-semibold text-slate-200 font-mono">{body.distance ? `${body.distance} AU` : 'Central Origin'}</span>
         </div>
         <div className="p-2 bg-slate-950/60 border border-white/10 rounded-xl">
-          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
-            <Thermometer className="w-2.5 h-2.5" /> Temp
-          </span>
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+              <Thermometer className="w-2.5 h-2.5" /> Temp
+            </span>
+            {onToggleTempUnit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  playTapSound?.();
+                  onToggleTempUnit();
+                }}
+                className="text-[9px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 px-1.5 py-0.2 rounded transition-colors"
+                title={`Current unit: ${tempUnit === 'C' ? 'Celsius (°C)' : tempUnit === 'F' ? 'Fahrenheit (°F)' : 'Kelvin (K)'}. Click to toggle.`}
+              >
+                {tempUnit === 'C' ? '°C' : tempUnit === 'F' ? '°F' : 'K'}
+              </button>
+            )}
+          </div>
           <span className="font-semibold text-slate-200 font-mono truncate block">{displayTemp}</span>
         </div>
         <div className="p-2 bg-slate-950/60 border border-white/10 rounded-xl">
@@ -1157,5 +1380,13 @@ export const CelestialMiniPreview: React.FC<CelestialMiniPreviewProps> = ({
     </div>
   );
 };
+
+export const CelestialMiniPreview = React.memo(CelestialMiniPreviewComponent, (prevProps, nextProps) => {
+  if (prevProps.body?.id !== nextProps.body?.id) return false;
+  if (prevProps.tempUnit !== nextProps.tempUnit) return false;
+  if (prevProps.info !== nextProps.info) return false;
+  if (prevProps.onToggleTempUnit !== nextProps.onToggleTempUnit) return false;
+  return true;
+});
 
 export default CelestialMiniPreview;

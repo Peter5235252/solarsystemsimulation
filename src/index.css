@@ -7,16 +7,30 @@ html, body, #root {
   padding: 0;
   overflow: hidden;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Global Non-Highlightable Text Configuration */
+*, *::before, *::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Ensure inputs, textareas, and editable fields allow text selection & typing */
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Dual Kawase Frosted Glass System - High Transparency See-Through Space Glass */
 .dual-kawase-glass {
   position: relative;
   overflow: hidden;
-  background: rgba(4, 8, 20, 0.38);
-  -webkit-backdrop-filter: blur(16px) saturate(190%) !important;
-  backdrop-filter: blur(16px) saturate(190%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 16, 36, 0.55);
+  -webkit-backdrop-filter: blur(24px) saturate(220%) !important;
+  backdrop-filter: blur(24px) saturate(220%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25);
   box-shadow: 
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.25),
     inset 0 -1px 1px 0 rgba(0, 0, 0, 0.65),
@@ -36,10 +50,10 @@ html, body, #root {
 .dual-kawase-glass-subtle {
   position: relative;
   overflow: hidden;
-  background: rgba(5, 10, 24, 0.28);
-  -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
-  backdrop-filter: blur(12px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(12, 18, 40, 0.45);
+  -webkit-backdrop-filter: blur(16px) saturate(200%) !important;
+  backdrop-filter: blur(16px) saturate(200%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.20);
   box-shadow: 
     inset 0 1px 0 0 rgba(255, 255, 255, 0.20),
     0 12px 36px -6px rgba(0, 0, 0, 0.70);
@@ -58,10 +72,10 @@ html, body, #root {
 .dual-kawase-glass-card {
   position: relative;
   overflow: hidden;
-  background: rgba(6, 12, 28, 0.22);
-  -webkit-backdrop-filter: blur(10px) saturate(170%) !important;
-  backdrop-filter: blur(10px) saturate(170%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 20, 44, 0.35);
+  -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
+  backdrop-filter: blur(12px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 
     inset 0 1px 0 0 rgba(255, 255, 255, 0.16),
     0 8px 24px -4px rgba(0, 0, 0, 0.60);
@@ -107,18 +121,18 @@ textarea,
 
 /* High-Performance Mode CSS Overrides */
 .perf-mode .dual-kawase-glass {
+  -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+  backdrop-filter: blur(16px) saturate(160%) !important;
+}
+
+.perf-mode .dual-kawase-glass-subtle {
   -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
   backdrop-filter: blur(12px) saturate(140%) !important;
 }
 
-.perf-mode .dual-kawase-glass-subtle {
+.perf-mode .dual-kawase-glass-card {
   -webkit-backdrop-filter: blur(10px) saturate(130%) !important;
   backdrop-filter: blur(10px) saturate(130%) !important;
-}
-
-.perf-mode .dual-kawase-glass-card {
-  -webkit-backdrop-filter: blur(8px) saturate(120%) !important;
-  backdrop-filter: blur(8px) saturate(120%) !important;
 }
 
 /* Glass specular top highlight rim */

@@ -21,6 +21,7 @@ interface CustomDropdownProps {
   icon?: React.ReactNode;
   uiAnimations?: boolean;
   uiAnimSpeed?: number;
+  playTapSound?: () => void;
 }
 
 export const CustomDropdown: React.FC<CustomDropdownProps> = ({
@@ -35,6 +36,7 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
   icon,
   uiAnimations = true,
   uiAnimSpeed = 1,
+  playTapSound,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,7 +71,10 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
     <div className={`relative inline-block w-full text-left ${className}`} ref={containerRef}>
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          playTapSound?.();
+          setIsOpen(!isOpen);
+        }}
         className={`w-full dual-kawase-glass-subtle hover:bg-slate-800/90 text-slate-200 text-xs rounded-xl px-3.5 py-2.5 flex items-center justify-between outline-none focus:ring-2 focus:ring-slate-500/50 cursor-pointer shadow-sm transition-all duration-200 active:scale-[0.98] active:opacity-80 active:duration-75 ${
           fontMono ? 'font-mono' : 'font-medium'
         } ${isOpen ? 'ring-2 ring-slate-500/50 border-slate-500/60 bg-slate-800' : ''} ${buttonClassName}`}
@@ -94,7 +99,7 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
             animate={{ }}
             exit={{ opacity: 0 }}
             transition={uiAnimations ? { duration: 0.1 / uiAnimSpeed } : { duration: 0 }}
-            className={`absolute left-0 right-0 mt-1.5 z-50 dual-kawase-glass glass-specular shadow-2xl rounded-xl p-1.5 max-h-60 overflow-y-auto divide-y divide-slate-800/40 custom-scrollbar ${menuClassName}`}
+            className={`!absolute left-0 right-0 mt-1.5 z-50 dual-kawase-glass glass-specular shadow-2xl rounded-xl p-1.5 max-h-60 overflow-y-auto divide-y divide-slate-800/40 custom-scrollbar ${menuClassName}`}
           >
             <motion.div
               initial={{ y: -6, scale: 0.96 }}
@@ -113,6 +118,7 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
                   disabled={option.disabled}
                   onClick={() => {
                     if (option.disabled) return;
+                    playTapSound?.();
                     onChange(option.value);
                     setIsOpen(false);
                   }}

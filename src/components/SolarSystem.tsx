@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { ZoomIn, ZoomOut, MousePointer2, ChevronUp, ChevronDown, Settings, Play, Pause, RotateCcw, X, Info, AlertTriangle, Search, Globe, Star, Share2, Sun, Aperture, Rocket, Sparkles, Wand2, Loader2, Thermometer, Weight, Activity, BookOpen, Monitor, Sliders, Volume2, VolumeX, Eye, EyeOff, Gauge, Zap, Bot, Grid, Cpu, Layers, Languages, Check, Focus, Command, CornerDownLeft, SlidersHorizontal, Compass, History, Trash2, CircleDot, Moon, Maximize2, Snowflake, ShieldCheck, Orbit } from 'lucide-react';
+import React, { useEffect, useRef, useState, useMemo, useCallback, useDeferredValue } from 'react';
+import { ZoomIn, ZoomOut, MousePointer2, ChevronUp, ChevronDown, Settings, Play, Pause, RotateCcw, X, Info, AlertTriangle, Search, Globe, Star, Share2, Sun, Aperture, Rocket, Sparkles, Wand2, Loader2, Thermometer, Weight, Activity, BookOpen, Monitor, Sliders, Volume2, VolumeX, Eye, EyeOff, Gauge, Zap, Bot, Grid, Cpu, Layers, Languages, Check, Focus, Command, CornerDownLeft, SlidersHorizontal, Compass, History, Trash2, CircleDot, Moon, Maximize2, Snowflake, ShieldCheck, Orbit, Radio, Headphones } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import AIResearcher from './AIResearcher';
 import { GeminiSidePanel } from './GeminiSidePanel';
@@ -280,6 +280,330 @@ const PerfModeModal = ({ isOpen, onClose, onConfirm, playTapSound, title, desc, 
   );
 };
 
+
+// Pure W3C WebGPU WGSL Shader Source Generator
+const buildWgslShaderSource = (): string => {
+  return `
+    struct Uniforms {
+      sharpness: f32,
+      inputWidth: f32,
+      inputHeight: f32,
+      time: f32,
+      bloomStrength: f32,
+      chromaticAberration: f32,
+      lensFlare: f32,
+      dustShimmer: f32,
+      sunCenterX: f32,
+      sunCenterY: f32,
+      vignette: f32,
+      resScaleRatio: f32,
+      cameraZoom: f32,
+      focusFactor: f32,
+    };
+
+    @group(0) @binding(0) var uSampler: sampler;
+    @group(0) @binding(1) var uTexture: texture_2d<f32>;
+    @group(0) @binding(2) var<uniform> uniforms: Uniforms;
+
+    struct VertexOutput {
+      @builtin(position) position: vec4f,
+      @location(0) uv: vec2f,
+    };
+
+    @vertex
+    fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+      var pos = array<vec2f, 6>(
+        vec2f(-1.0, -1.0),
+        vec2f( 1.0, -1.0),
+        vec2f(-1.0,  1.0),
+        vec2f(-1.0,  1.0),
+        vec2f( 1.0, -1.0),
+        vec2f( 1.0,  1.0)
+      );
+      var uv = array<vec2f, 6>(
+        vec2f(0.0, 1.0),
+        vec2f(1.0, 1.0),
+        vec2f(0.0, 0.0),
+        vec2f(0.0, 0.0),
+        vec2f(1.0, 1.0),
+        vec2f(1.0, 0.0)
+      );
+
+      var output: VertexOutput;
+      output.position = vec4f(pos[vertexIndex], 0.0, 1.0);
+      output.uv = uv[vertexIndex];
+      return output;
+    }
+
+    fn hash22(p: vec2f) -> f32 {
+      var p3 = fract(vec3f(p.xyx) * 0.1031);
+      p3 += vec3f(dot(p3, p3.yzx + vec3f(33.33)));
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    fn acesFilmic(x: vec3f) -> vec3f {
+      let a = 2.51;
+      let b = 0.03;
+      let c = 2.43;
+      let d = 0.59;
+      let e = 0.14;
+      return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
+    }
+
+    fn fsrEasu(uv: vec2f, inputSize: vec2f) -> vec3f {
+      let dx = 1.0 / max(1.0, inputSize.x);
+      let dy = 1.0 / max(1.0, inputSize.y);
+
+      let c  = textureSampleLevel(uTexture, uSampler, uv, 0.0).rgb;
+      let n  = textureSampleLevel(uTexture, uSampler, uv + vec2f(0.0, -dy), 0.0).rgb;
+      let s  = textureSampleLevel(uTexture, uSampler, uv + vec2f(0.0, dy), 0.0).rgb;
+      let w  = textureSampleLevel(uTexture, uSampler, uv + vec2f(-dx, 0.0), 0.0).rgb;
+      let e  = textureSampleLevel(uTexture, uSampler, uv + vec2f(dx, 0.0), 0.0).rgb;
+
+      let nw = textureSampleLevel(uTexture, uSampler, uv + vec2f(-dx, -dy), 0.0).rgb;
+      let ne = textureSampleLevel(uTexture, uSampler, uv + vec2f(dx, -dy), 0.0).rgb;
+      let sw = textureSampleLevel(uTexture, uSampler, uv + vec2f(-dx, dy), 0.0).rgb;
+      let se = textureSampleLevel(uTexture, uSampler, uv + vec2f(dx, dy), 0.0).rgb;
+
+      let lumaC = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+      let lumaN = dot(n, vec3f(0.2126, 0.7152, 0.0722));
+      let lumaS = dot(s, vec3f(0.2126, 0.7152, 0.0722));
+      let lumaW = dot(w, vec3f(0.2126, 0.7152, 0.0722));
+      let lumaE = dot(e, vec3f(0.2126, 0.7152, 0.0722));
+
+      let dirX = abs(lumaE - lumaW);
+      let dirY = abs(lumaS - lumaN);
+      let diag1 = abs(dot(ne - sw, vec3f(0.333)));
+      let diag2 = abs(dot(nw - se, vec3f(0.333)));
+
+      let edgeStrength = clamp((dirX + dirY + diag1 + diag2) * 3.0, 0.0, 1.0);
+
+      let horizVert = (n + s + w + e) * 0.25;
+      let diagonal = (nw + ne + sw + se) * 0.25;
+      let edgeColor = mix(horizVert, diagonal, step(dirY + diag2, dirX + diag1));
+
+      return mix(c, edgeColor, edgeStrength * 0.7);
+    }
+
+    fn fsrRcas(baseCol: vec3f, uv: vec2f, inputSize: vec2f, sharpness: f32) -> vec3f {
+      if (sharpness <= 0.001) {
+        return baseCol;
+      }
+      let dx = 1.0 / max(1.0, inputSize.x);
+      let dy = 1.0 / max(1.0, inputSize.y);
+
+      let e = textureSampleLevel(uTexture, uSampler, uv + vec2f(dx, 0.0), 0.0).rgb;
+      let w = textureSampleLevel(uTexture, uSampler, uv - vec2f(dx, 0.0), 0.0).rgb;
+      let n = textureSampleLevel(uTexture, uSampler, uv - vec2f(0.0, dy), 0.0).rgb;
+      let s = textureSampleLevel(uTexture, uSampler, uv + vec2f(0.0, dy), 0.0).rgb;
+
+      let lumaM = dot(baseCol, vec3f(0.2126, 0.7152, 0.0722));
+      let lumaE = dot(e, vec3f(0.2126, 0.7152, 0.0722));
+      let lumaW = dot(w, vec3f(0.2126, 0.7152, 0.0722));
+      let lumaN = dot(n, vec3f(0.2126, 0.7152, 0.0722));
+      let lumaS = dot(s, vec3f(0.2126, 0.7152, 0.0722));
+
+      let mn = min(lumaM, min(min(lumaE, lumaW), min(lumaN, lumaS)));
+      let mx = max(lumaM, max(max(lumaE, lumaW), max(lumaN, lumaS)));
+
+      let contrastRange = mx - mn;
+      let peak = 1.0 - clamp(contrastRange * 1.5, 0.0, 1.0);
+      let weight = clamp(sharpness * peak * 0.5, 0.0, 0.4);
+
+      return clamp(baseCol + (4.0 * baseCol - (e + w + n + s)) * weight, vec3f(0.0), vec3f(1.0));
+    }
+
+    fn anamorphicLensFlare(uv: vec2f, texSize: vec2f, sunUV: vec2f, intensity: f32) -> vec3f {
+      if (sunUV.x < -0.4 || sunUV.x > 1.4 || sunUV.y < -0.4 || sunUV.y > 1.4) {
+        return vec3f(0.0);
+      }
+      let aspect = texSize.x / max(1.0, texSize.y);
+      let delta = uv - sunUV;
+      let sunDist = length(delta * vec2f(aspect, 1.0));
+      
+      let streakY = abs(delta.y);
+      let streakX = abs(delta.x * aspect);
+      let horizStreak = exp(-streakY * 260.0) * exp(-streakX * 3.0) * 0.28;
+      
+      let angle = atan2(delta.y, delta.x * aspect);
+      let spike = (pow(abs(sin(angle * 2.0)), 32.0) + pow(abs(cos(angle * 2.0)), 32.0)) * exp(-sunDist * 7.5) * 0.22;
+      
+      var ghostCol = vec3f(0.0);
+      let centerVector = vec2f(0.5) - sunUV;
+      for (var i = 1; i <= 4; i = i + 1) {
+        let ghostPos = sunUV + centerVector * (f32(i) * 0.38 - 0.15);
+        let ghostDist = length((uv - ghostPos) * vec2f(aspect, 1.0));
+        let ring = exp(-abs(ghostDist - 0.035 * f32(i)) * 110.0) * 0.045;
+        ghostCol += mix(vec3f(0.15, 0.45, 1.0), vec3f(1.0, 0.35, 0.65), f32(i) / 4.0) * ring;
+      }
+      
+      let coreRadial = exp(-sunDist * 3.8) * 0.45;
+      return (vec3f(1.0, 0.9, 0.72) * (horizStreak + spike + coreRadial) + ghostCol) * intensity;
+    }
+
+    // Native Dual Kawase Downsample Pass
+    // Marius Kawase 5-tap downsampling filter (1 center sample @ 4.0x + 4 corner samples @ 1.0x)
+    fn dualKawaseDownsample(uv: vec2f, texSize: vec2f, iteration: f32) -> vec3f {
+      let d = (vec2f(0.5) + vec2f(iteration)) / max(vec2f(1.0), texSize);
+      
+      let sumCenter = textureSampleLevel(uTexture, uSampler, uv, 0.0).rgb * 4.0;
+      let sumTL = textureSampleLevel(uTexture, uSampler, uv + vec2f(-d.x, -d.y), 0.0).rgb;
+      let sumTR = textureSampleLevel(uTexture, uSampler, uv + vec2f( d.x, -d.y), 0.0).rgb;
+      let sumBL = textureSampleLevel(uTexture, uSampler, uv + vec2f(-d.x,  d.y), 0.0).rgb;
+      let sumBR = textureSampleLevel(uTexture, uSampler, uv + vec2f( d.x,  d.y), 0.0).rgb;
+      
+      return (sumCenter + sumTL + sumTR + sumBL + sumBR) * 0.125;
+    }
+
+    // Native Dual Kawase Upsample Pass
+    // Marius Kawase 8-tap upsampling filter (4 corners @ 2.0x + 4 axial samples @ 1.0x)
+    fn dualKawaseUpsample(uv: vec2f, texSize: vec2f, iteration: f32) -> vec3f {
+      let d = (vec2f(0.5) + vec2f(iteration)) / max(vec2f(1.0), texSize);
+      
+      let cTL = textureSampleLevel(uTexture, uSampler, uv + vec2f(-d.x, -d.y), 0.0).rgb * 2.0;
+      let cTR = textureSampleLevel(uTexture, uSampler, uv + vec2f( d.x, -d.y), 0.0).rgb * 2.0;
+      let cBL = textureSampleLevel(uTexture, uSampler, uv + vec2f(-d.x,  d.y), 0.0).rgb * 2.0;
+      let cBR = textureSampleLevel(uTexture, uSampler, uv + vec2f( d.x,  d.y), 0.0).rgb * 2.0;
+      
+      let aL = textureSampleLevel(uTexture, uSampler, uv + vec2f(-d.x * 2.0, 0.0), 0.0).rgb;
+      let aR = textureSampleLevel(uTexture, uSampler, uv + vec2f( d.x * 2.0, 0.0), 0.0).rgb;
+      let aT = textureSampleLevel(uTexture, uSampler, uv + vec2f(0.0, -d.y * 2.0), 0.0).rgb;
+      let aB = textureSampleLevel(uTexture, uSampler, uv + vec2f(0.0,  d.y * 2.0), 0.0).rgb;
+      
+      return (cTL + cTR + cBL + cBR + aL + aR + aT + aB) / 12.0;
+    }
+
+    // Native Cascaded Dual Kawase Multi-Pass Filter Pyramid
+    fn nativeDualKawaseFilter(uv: vec2f, texSize: vec2f, blurStrength: f32) -> vec3f {
+      if (blurStrength <= 0.001) {
+        return textureSampleLevel(uTexture, uSampler, uv, 0.0).rgb;
+      }
+      
+      let spread = blurStrength * 2.5;
+      
+      // Cascaded Downsample Pyramid Passes (Levels 0, 1, 2, 3)
+      let ds0 = dualKawaseDownsample(uv, texSize, 0.0 * spread);
+      let ds1 = dualKawaseDownsample(uv, texSize, 1.2 * spread);
+      let ds2 = dualKawaseDownsample(uv, texSize, 2.4 * spread);
+      let ds3 = dualKawaseDownsample(uv, texSize, 3.8 * spread);
+      
+      // Cascaded Upsample Pyramid Passes (Levels 3, 2, 1, 0)
+      let us3 = dualKawaseUpsample(uv, texSize, 3.8 * spread);
+      let us2 = dualKawaseUpsample(uv, texSize, 2.4 * spread);
+      let us1 = dualKawaseUpsample(uv, texSize, 1.2 * spread);
+      let us0 = dualKawaseUpsample(uv, texSize, 0.0 * spread);
+      
+      // Combine multi-pyramid levels for silky-smooth physical Dual Kawase bloom & blur
+      let downsampledGlow = (ds0 * 0.4) + (ds1 * 0.3) + (ds2 * 0.2) + (ds3 * 0.1);
+      let upsampledGlow   = (us0 * 0.4) + (us1 * 0.3) + (us2 * 0.2) + (us3 * 0.1);
+      
+      return mix(downsampledGlow, upsampledGlow, 0.5);
+    }
+
+    @fragment
+    fn fs_main(@location(0) inUV: vec2f) -> @location(0) vec4f {
+      let texSize = vec2f(uniforms.inputWidth, uniforms.inputHeight);
+      let aspect = texSize.x / max(1.0, texSize.y);
+      let dx = 1.0 / max(1.0, texSize.x);
+      let dy = 1.0 / max(1.0, texSize.y);
+      let sunUV = vec2f(uniforms.sunCenterX, uniforms.sunCenterY);
+
+      var uv = inUV;
+      let focus = clamp(uniforms.focusFactor, 0.0, 1.0);
+
+      let k = 0.065 * focus * uniforms.vignette;
+      if (k > 0.0001) {
+        let centered = (inUV - vec2f(0.5)) * vec2f(aspect, 1.0);
+        let r2 = dot(centered, centered);
+        let scaleCompensate = 1.0 / (1.0 + k * 0.45);
+        let warpedCentered = centered * scaleCompensate * (1.0 + k * r2);
+        uv = vec2f(0.5) + warpedCentered * vec2f(1.0 / aspect, 1.0);
+        uv = clamp(uv, vec2f(0.0001), vec2f(0.9999));
+      }
+
+      var sampledColor: vec3f;
+      if (uniforms.chromaticAberration > 0.001) {
+        let centerDist = length(uv - vec2f(0.5));
+        let offset = (uv - vec2f(0.5)) * centerDist * (0.012 + 0.006 * focus) * uniforms.chromaticAberration;
+        let r = textureSampleLevel(uTexture, uSampler, uv - offset, 0.0).r;
+        let g = textureSampleLevel(uTexture, uSampler, uv, 0.0).g;
+        let b = textureSampleLevel(uTexture, uSampler, uv + offset, 0.0).b;
+        sampledColor = vec3f(r, g, b);
+      } else {
+        sampledColor = textureSampleLevel(uTexture, uSampler, uv, 0.0).rgb;
+      }
+
+      var upscaledColor = sampledColor;
+      if (uniforms.resScaleRatio < 0.99) {
+        upscaledColor = fsrEasu(uv, texSize);
+      }
+
+      let baseColor = fsrRcas(upscaledColor, uv, texSize, uniforms.sharpness);
+      let baseLuma = dot(baseColor, vec3f(0.2126, 0.7152, 0.0722));
+
+      var hdrColor = baseColor;
+      if (baseLuma > 0.55) {
+        let boost = pow((baseLuma - 0.55) / 0.45, 2.2) * 2.5;
+        hdrColor += baseColor * boost;
+      }
+
+      // Native Dual Kawase WGSL Multi-Pass Filter Pass for Physical Bloom & Depth Blur
+      if (uniforms.bloomStrength > 0.01) {
+        let kawaseBloom = nativeDualKawaseFilter(uv, texSize, uniforms.bloomStrength);
+        let bloomLuma = dot(kawaseBloom, vec3f(0.2126, 0.7152, 0.0722));
+        let emissiveFactor = smoothstep(0.35, 0.85, bloomLuma);
+        hdrColor += kawaseBloom * emissiveFactor * uniforms.bloomStrength * 1.85;
+      }
+
+      if (focus > 0.01) {
+        let kawaseFocusBlur = nativeDualKawaseFilter(uv, texSize, focus * 0.75);
+        hdrColor = mix(hdrColor, kawaseFocusBlur, focus * 0.35);
+      }
+
+      if (sunUV.x > -0.5 && sunUV.x < 1.5 && sunUV.y > -0.5 && sunUV.y < 1.5) {
+        let sunDelta = (uv - sunUV) * vec2f(aspect, 1.0);
+        let sunDist = length(sunDelta);
+        let sunCoronaGlow = exp(-sunDist * 2.8) * vec3f(1.0, 0.82, 0.55) * 0.35 * uniforms.bloomStrength;
+        hdrColor += sunCoronaGlow;
+      }
+
+      if (uniforms.lensFlare > 0.01) {
+        let flareCol = anamorphicLensFlare(uv, texSize, sunUV, uniforms.lensFlare);
+        hdrColor += flareCol;
+      }
+
+      if (uniforms.dustShimmer > 0.01) {
+        let gridUV = uv * vec2f(aspect * 16.0, 16.0);
+        let cell = floor(gridUV);
+        let cellUV = fract(gridUV);
+        let n = hash22(cell);
+        if (n > 0.94) {
+          let particlePos = vec2f(hash22(cell + vec2f(1.0)), hash22(cell + vec2f(2.0)));
+          let dist = length(cellUV - particlePos);
+          let twinkle = sin(uniforms.time * 2.5 + n * 62.8) * 0.5 + 0.5;
+          let particleGlow = exp(-dist * 18.0) * twinkle * 0.35 * uniforms.dustShimmer;
+          hdrColor += vec3f(0.6, 0.8, 1.0) * particleGlow;
+        }
+      }
+
+      var outputColor = hdrColor;
+
+      if (uniforms.vignette > 0.01) {
+        let centerVector = (uv - vec2f(0.5)) * vec2f(aspect, 1.0);
+        let centerDist = length(centerVector);
+        let baseVignette = 0.10 * uniforms.vignette;
+        let focusVignette = 0.25 * focus * uniforms.vignette;
+        let totalVignette = baseVignette + focusVignette;
+        let vigFalloff = smoothstep(0.42, 1.08, centerDist);
+        let vig = 1.0 - vigFalloff * totalVignette;
+        outputColor *= clamp(vig, 0.65, 1.0);
+      }
+
+      return vec4f(clamp(outputColor, vec3f(0.0), vec3f(1.0)), 1.0);
+    }
+  `;
+};
+
 export default function SolarSystem() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const webgpuCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -392,29 +716,11 @@ export default function SolarSystem() {
   });
 
   const DEFAULT_WGSL_CODE = `// AI WebGPU Post-Processing Shader Effect (WGSL)
-// Verified W3C WebGPU Shading Language Standards
-// - Explicit float literals: 1.0, 0.5f
-// - Modern WGSL vector types: vec2f, vec4f
-
-@group(0) @binding(0) var srcSampler: sampler;
-@group(0) @binding(1) var srcTexture: texture_2d<f32>;
-
-struct Uniforms {
-  time: f32,
-  resolution: vec2f,
-  intensity: f32,
-};
-@group(0) @binding(2) var<uniform> uniforms: Uniforms;
-
-@fragment
-fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let color = textureSample(srcTexture, srcSampler, uv);
-  let wave = sin(uv.y * 24.0 + uniforms.time * 2.5) * 0.04 * uniforms.intensity;
-  let warpedUv = vec2f(uv.x + wave, uv.y);
-  let warpedColor = textureSample(srcTexture, srcSampler, warpedUv);
-  
-  return vec4f(warpedColor.rgb, color.a);
-}`;
+// Modifies hdrColor using inUV, uTexture, uSampler, and uniforms
+let wave = sin(inUV.y * 28.0 + uniforms.time * 2.5) * 0.0025;
+let warpedUv = vec2f(inUV.x + wave, inUV.y);
+let customSampledColor = textureSampleLevel(uTexture, uSampler, warpedUv, 0.0).rgb;
+hdrColor = mix(hdrColor, customSampledColor, 0.5);`;
 
   const [aiCustomWgslCode, setAiCustomWgslCode] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -493,7 +799,13 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
     }
   };
 
-  const [isWebGpuActive, setIsWebGpuActive] = useState(false);
+  const [isWebGpuActiveState, setIsWebGpuActiveState] = useState(false);
+  const isWebGpuActiveRef = useRef(false);
+  const isWebGpuActive = isWebGpuActiveState;
+  const setIsWebGpuActive = useCallback((val: boolean) => {
+    isWebGpuActiveRef.current = val;
+    setIsWebGpuActiveState(val);
+  }, []);
   const [isWebGpuDisabled, setIsWebGpuDisabled] = useState(false);
   const [webGpuDisabledReason, setWebGpuDisabledReason] = useState<string>('');
   const isWebGpuHaltedRef = useRef(false);
@@ -590,28 +902,70 @@ useEffect(() => {
     localStorage.setItem("geminiApiKey", geminiKey);
   }, [geminiKey]);
 
-  const [tempUnit, setTempUnit] = useState<'C' | 'F'>('C');
+  const [tempUnit, setTempUnit] = useState<'C' | 'F' | 'K'>(() => {
+    try {
+      const saved = localStorage.getItem('tempUnit');
+      if (saved === 'C' || saved === 'F' || saved === 'K') return saved;
+    } catch {
+      // ignore
+    }
+    return 'C';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tempUnit', tempUnit);
+    } catch {
+      // ignore
+    }
+  }, [tempUnit]);
 
   const getDisplayTemp = (tempStr: string) => {
+    if (!tempStr) return 'N/A';
     if (tempUnit === 'C') return tempStr;
-    return tempStr.replace(/-?\d+(?:,\d+)?/g, (match) => {
-      const num = parseFloat(match.replace(',', ''));
-      if (isNaN(num)) return match;
-      const f = Math.round((num * 9) / 5 + 32);
-      return f.toLocaleString();
-    }).replace(/°C/g, '°F');
+
+    let converted = tempStr;
+
+    if (tempUnit === 'F') {
+      converted = converted.replace(/(\d+(?:\.\d+)?)\s*M\s*°C/gi, (_, num) => {
+        const val = parseFloat(num);
+        const fVal = Math.round(val * 1.8 * 10) / 10;
+        return `${fVal}M °F`;
+      });
+      converted = converted.replace(/(-?\d+(?:,\d+)?(?:\.\d+)?)\s*°C/g, (_, match) => {
+        const num = parseFloat(match.replace(/,/g, ''));
+        if (isNaN(num)) return `${match}°F`;
+        const f = Math.round((num * 9) / 5 + 32);
+        return `${f.toLocaleString()}°F`;
+      });
+      return converted;
+    }
+
+    if (tempUnit === 'K') {
+      converted = converted.replace(/(\d+(?:\.\d+)?)\s*M\s*°C/gi, (_, num) => {
+        return `${num}M K`;
+      });
+      converted = converted.replace(/(-?\d+(?:,\d+)?(?:\.\d+)?)\s*°C/g, (_, match) => {
+        const num = parseFloat(match.replace(/,/g, ''));
+        if (isNaN(num)) return `${match} K`;
+        const k = Math.max(0, Math.round(num + 273.15));
+        return `${k.toLocaleString()} K`;
+      });
+      return converted;
+    }
+
+    return tempStr;
   };
 
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [hoveredSearchColor, setHoveredSearchColor] = useState<string | null>(null);
   const [aiDescription, setAiDescription] = useState<string>('');
+  const [isAiGeneratedDesc, setIsAiGeneratedDesc] = useState<boolean>(false);
   const [isDescLoading, setIsDescLoading] = useState(false);
   const descriptionAbortController = useRef<AbortController | null>(null);
   const descriptionCacheRef = useRef<Record<string, string>>({});
-
-  const [searchScrollTop, setSearchScrollTop] = useState(0);
-  const [searchScrollHeight, setSearchScrollHeight] = useState(0);
-  const [searchClientHeight, setSearchClientHeight] = useState(0);
+  const descriptionIsAiCacheRef = useRef<Record<string, boolean>>({});
   const searchScrollRef = useRef<HTMLDivElement>(null);
 
   const findBodyIdByQuery = (q: string): string | null => {
@@ -640,7 +994,7 @@ useEffect(() => {
   };
 
   useEffect(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = deferredSearchQuery.trim().toLowerCase();
     if (!query) return;
 
     const matchComplete = query.match(/^([a-z0-9\s-]+)\s+vs\s+([a-z0-9\s-]+)$/i);
@@ -666,68 +1020,7 @@ useEffect(() => {
         }
       }
     }
-  }, [searchQuery]);
-
-  const handleSearchScroll = () => {
-    if (searchScrollRef.current) {
-      setSearchScrollTop(searchScrollRef.current.scrollTop);
-      setSearchScrollHeight(searchScrollRef.current.scrollHeight);
-      setSearchClientHeight(searchScrollRef.current.clientHeight);
-    }
-  };
-
-  const handleThumbMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const startY = e.pageY;
-    const startScrollTop = searchScrollRef.current?.scrollTop || 0;
-    const trackHeight = searchClientHeight - 16;
-    const thumbHeight = Math.max(20, (searchClientHeight / (searchScrollHeight || 1)) * trackHeight);
-    const thumbScrollableRange = trackHeight - thumbHeight;
-    const containerScrollableRange = searchScrollHeight - searchClientHeight;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const deltaY = moveEvent.pageY - startY;
-      const scrollRatioDelta = thumbScrollableRange > 0 ? deltaY / thumbScrollableRange : 0;
-      if (searchScrollRef.current) {
-        searchScrollRef.current.scrollTop = startScrollTop + scrollRatioDelta * containerScrollableRange;
-      }
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const handleThumbTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    const startY = touch.pageY;
-    const startScrollTop = searchScrollRef.current?.scrollTop || 0;
-    const trackHeight = searchClientHeight - 16;
-    const thumbHeight = Math.max(20, (searchClientHeight / (searchScrollHeight || 1)) * trackHeight);
-    const thumbScrollableRange = trackHeight - thumbHeight;
-    const containerScrollableRange = searchScrollHeight - searchClientHeight;
-
-    const handleTouchMove = (moveEvent: TouchEvent) => {
-      const touchMove = moveEvent.touches[0];
-      const deltaY = touchMove.pageY - startY;
-      const scrollRatioDelta = thumbScrollableRange > 0 ? deltaY / thumbScrollableRange : 0;
-      if (searchScrollRef.current) {
-        searchScrollRef.current.scrollTop = startScrollTop + scrollRatioDelta * containerScrollableRange;
-      }
-    };
-
-    const handleTouchEnd = () => {
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
-    };
-
-    document.addEventListener('touchmove', handleTouchMove);
-    document.addEventListener('touchend', handleTouchEnd);
-  };
+  }, [deferredSearchQuery]);
 
   const deviceType = 'pc';
 
@@ -747,7 +1040,7 @@ useEffect(() => {
   const [showPerfModal, setShowPerfModal] = useState(false);
   
   // Settings State
-  const [settingsTab, setSettingsTab] = useState<'graphics' | 'ai_effects' | 'simulation' | 'preferences'>('graphics');
+  const [settingsTab, setSettingsTab] = useState<'graphics' | 'audio' | 'simulation' | 'preferences'>('graphics');
   const previousSpeedRef = useRef(1);
   const lang: LanguageCode = 'en';
   const [speedMultiplier, setSpeedMultiplier] = useState(() => {
@@ -835,6 +1128,20 @@ useEffect(() => {
     }
     return 1;
   });
+  const [tapVolume, setTapVolume] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('tapVolume');
+      return saved !== null ? parseFloat(saved) : 50;
+    }
+    return 50;
+  });
+  const [ambienceVolume, setAmbienceVolume] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('ambienceVolume');
+      return saved !== null ? parseFloat(saved) : 30;
+    }
+    return 30;
+  });
   useEffect(() => {
     localStorage.setItem('speedMultiplier', String(speedMultiplier));
     localStorage.setItem('fpsCap', String(fpsCap));
@@ -847,7 +1154,9 @@ useEffect(() => {
     localStorage.setItem('perfMode', String(perfMode));
     localStorage.setItem('resScale', String(resScale));
     localStorage.setItem('uiAnimSpeed', String(uiAnimSpeed));
-  }, [speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, resScale, uiAnimSpeed]);
+    localStorage.setItem('tapVolume', String(tapVolume));
+    localStorage.setItem('ambienceVolume', String(ambienceVolume));
+  }, [speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, resScale, uiAnimSpeed, tapVolume, ambienceVolume]);
 
 
   useEffect(() => {
@@ -909,11 +1218,13 @@ useEffect(() => {
     const cacheKey = `${body.id}_${lang}`;
     if (descriptionCacheRef.current[cacheKey]) {
       setAiDescription(descriptionCacheRef.current[cacheKey]);
+      setIsAiGeneratedDesc(useAI && !!descriptionIsAiCacheRef.current[cacheKey]);
       setIsDescLoading(false);
       return;
     }
 
     setAiDescription('');
+    setIsAiGeneratedDesc(false);
     
     if (useAI) {
       setIsDescLoading(true);
@@ -933,7 +1244,7 @@ useEffect(() => {
       // Generate dynamic AI description
       try {
         const languageName = LANGUAGES.find(l => l.code === lang)?.name || 'English';
-        const systemInstruction = `You are a concise stellar guide. You provide extremely short (max 20 words) raw text descriptions in the requested language. Use proper grammar and punctuation. NEVER use formatting of any kind. No asterisks (*), no backticks (\`), NO exceptions.`;
+        const systemInstruction = `You are a concise stellar guide. You provide extremely short (max 20 words) raw text descriptions in the requested language. Use proper grammar and punctuation. NEVER use formatting or emojis of any kind. No asterisks (*), no backticks (\`), NO emojis under any circumstances, NO exceptions.`;
         const prompt = `Write a extremely concise 1-sentence description of the celestial body "${tName}" in ${languageName}. 
         Do not include its name in the sentence if possible. Just describe it. 
         STRICT REQUIREMENT: Use proper grammar, punctuation, and apostrophes (e.g. "Earth's").
@@ -955,7 +1266,9 @@ useEffect(() => {
             if (data.text) {
               fullText = data.text;
               descriptionCacheRef.current[cacheKey] = fullText;
+              descriptionIsAiCacheRef.current[cacheKey] = true;
               setAiDescription(fullText);
+              setIsAiGeneratedDesc(true);
             }
           }
         } catch (apiError: any) {
@@ -979,13 +1292,17 @@ useEffect(() => {
           }
           const resultDesc = fallbackDesc || "Celestial body details currently unavailable.";
           descriptionCacheRef.current[cacheKey] = resultDesc;
+          descriptionIsAiCacheRef.current[cacheKey] = false;
           setAiDescription(resultDesc);
+          setIsAiGeneratedDesc(false);
         }
       } catch (error) {
         console.error("General AI Description Error:", error);
       } finally {
         setIsDescLoading(false);
       }
+    } else {
+      setIsAiGeneratedDesc(false);
     }
 
     if ('nameKey' in body && body.nameKey && !showConstellations && isConstellation) {
@@ -1079,6 +1396,24 @@ useEffect(() => {
     return { success, msg };
   };
 
+  const stateRef = useRef({
+    cameraX: 0,
+    cameraY: 0,
+    zoom: 1,
+    targetZoom: 1,
+    isDragging: false,
+    lastX: 0,
+    lastY: 0,
+    time: 0,
+    glows: {} as Record<string, number>,
+    lockedPlanetId: null as string | null,
+    lastLockedPlanetId: null as string | null,
+    isCameraLocked: false,
+    focusFactor: 0,
+    mouseX: 0,
+    mouseY: 0
+  });
+
   const handleAIAction = (rawAction: { type: string; [key: string]: any }) => {
     if (!rawAction) return;
 
@@ -1086,16 +1421,26 @@ useEffect(() => {
     let type = (rawAction.type || '').toLowerCase().replace(/_/g, '');
     if (type === 'opensettings') type = 'open_settings';
     else if (type === 'closesettings') type = 'close_settings';
-    else if (type === 'selectplanet' || type === 'selectbody' || type === 'focusplanet' || type === 'focusbody' || type === 'focus' || type === 'travel') type = 'select_planet';
+    else if (type === 'selectplanet' || type === 'selectbody' || type === 'focusplanet' || type === 'focusbody' || type === 'focus' || type === 'travel' || type === 'target') type = 'select_planet';
+    else if (type === 'resetcamera' || type === 'reset' || type === 'overview' || type === 'solarsystemview') type = 'reset_camera';
+    else if (type === 'setzoom' || type === 'zoom' || type === 'camerazoom') type = 'set_zoom';
+    else if (type === 'setspeed' || type === 'speed' || type === 'speedmultiplier' || type === 'orbitspeed') type = 'set_speed';
+    else if (type === 'pause' || type === 'pausesimulation') type = 'pause';
+    else if (type === 'resume' || type === 'unpause' || type === 'resumesimulation') type = 'resume';
+    else if (type === 'togglepause' || type === 'toggleplay') type = 'toggle_pause';
+    else if (type === 'timetravel' || type === 'settimeevent' || type === 'timeevent' || type === 'warpevent' || type === 'historicevent') type = 'time_travel';
     else if (type === 'setsetting' || type === 'modifysetting' || type === 'changesetting' || type === 'togglesetting') type = 'set_setting';
     else if (type === 'applypreset' || type === 'setpreset' || type === 'graphicspreset' || type === 'setgraphics') type = 'apply_preset';
+    else if (type === 'setaudio' || type === 'audiocontrol' || type === 'volume') type = 'set_audio';
+    else if (type === 'opensearch' || type === 'search') type = 'open_search';
+    else if (type === 'batch' || type === 'multiaction' || type === 'sequence') type = 'batch';
     else if (type === 'setaieffect' || type === 'aieffect' || type === 'aigraphicseffect' || type === 'customshader' || type === 'wgslshader' || type === 'createshader' || type === 'generateshader' || type === 'applyshader' || type === 'webgpushader') type = 'set_ai_effect';
 
     switch (type) {
       case 'open_settings': {
         const tab = String(rawAction.tab || rawAction.value || '').toLowerCase();
-        if (tab === 'graphics' || tab === 'ai_effects' || tab === 'aieffects' || tab === 'effects' || tab === 'simulation' || tab === 'preferences') {
-          setSettingsTab(tab.includes('effect') || tab === 'ai_effects' ? 'ai_effects' : (tab as any));
+        if (tab === 'graphics' || tab === 'audio' || tab === 'sound' || tab === 'simulation' || tab === 'preferences') {
+          setSettingsTab(tab === 'sound' ? 'audio' : (tab as any));
         }
         setIsSettingsOpen(true);
         break;
@@ -1103,21 +1448,212 @@ useEffect(() => {
       case 'close_settings':
         setIsSettingsOpen(false);
         break;
+      case 'reset_camera': {
+        stateRef.current.lockedPlanetId = null;
+        stateRef.current.lastLockedPlanetId = null;
+        stateRef.current.isCameraLocked = false;
+        setSelectedPlanet(null);
+        stateRef.current.cameraX = 0;
+        stateRef.current.cameraY = 0;
+        stateRef.current.zoom = 1;
+        stateRef.current.targetZoom = 1;
+        break;
+      }
+      case 'set_zoom': {
+        const zVal = rawAction.value || rawAction.zoom || rawAction.level;
+        if (zVal === 'in' || zVal === 'zoomin') {
+          stateRef.current.targetZoom = Math.max(0.1, Math.min(stateRef.current.targetZoom * 1.6, 5));
+        } else if (zVal === 'out' || zVal === 'zoomout') {
+          stateRef.current.targetZoom = Math.max(0.1, Math.min(stateRef.current.targetZoom * 0.625, 5));
+        } else {
+          const num = parseFloat(zVal);
+          if (!isNaN(num)) {
+            stateRef.current.targetZoom = Math.max(0.1, Math.min(num, 5));
+          }
+        }
+        break;
+      }
+      case 'set_speed': {
+        const num = parseFloat(rawAction.value ?? rawAction.speed ?? rawAction.multiplier ?? rawAction.speedMultiplier);
+        if (!isNaN(num)) {
+          setSpeedMultiplier(Math.max(0, Math.min(num, 1000)));
+        }
+        break;
+      }
+      case 'pause': {
+        setSpeedMultiplier(prev => {
+          if (prev > 0) previousSpeedRef.current = prev;
+          return 0;
+        });
+        break;
+      }
+      case 'resume': {
+        setSpeedMultiplier(previousSpeedRef.current || 1);
+        break;
+      }
+      case 'toggle_pause': {
+        setSpeedMultiplier(prev => {
+          if (prev > 0) {
+            previousSpeedRef.current = prev;
+            return 0;
+          }
+          return previousSpeedRef.current || 1;
+        });
+        break;
+      }
+      case 'time_travel': {
+        const evtId = String(rawAction.id || rawAction.event || rawAction.value || '').toLowerCase().trim().replace(/_/g, '');
+        const events = [
+          {
+            id: 'apollo11',
+            title: 'Apollo 11 Moon Landing',
+            date: 'July 20, 1969',
+            badge: 'HISTORIC',
+            badgeColor: 'bg-amber-500/10 text-slate-400 border-amber-500/20',
+            desc: 'Neil Armstrong and Buzz Aldrin perform the first crewed landing on the Lunar surface.',
+            focusId: 'moon',
+            timeValue: 120,
+            speed: 0,
+            facts: ['Neil Armstrong and Buzz Aldrin spent 21.6 hours on the Moon.', 'The Apollo guidance computer had less compute power than a modern pocket calculator.']
+          },
+          {
+            id: 'voyager1',
+            title: 'Voyager 1 Deep Space Mission',
+            date: 'September 5, 1977',
+            badge: 'MISSION',
+            badgeColor: 'bg-cyan-500/10 text-slate-400 border-cyan-500/20',
+            desc: 'Voyager 1 launches to study the outer solar system and enters interstellar space.',
+            focusId: 'voyager1',
+            timeValue: 1800,
+            speed: 1.5,
+            facts: ['Voyager 1 carries the Golden Record to communicate with future civilizations.', 'It is the farthest human-made object, traveling at over 61,000 km/h.']
+          },
+          {
+            id: 'halley1986',
+            title: "Halley's Comet Perihelion",
+            date: 'February 9, 1986',
+            badge: 'COMET',
+            badgeColor: 'bg-slate-800 text-slate-400 border-emerald-500/20',
+            desc: 'The legendary periodic comet sweeps close to the Sun, igniting brilliant tail activity.',
+            focusId: 'sun',
+            timeValue: 450,
+            speed: 2.0,
+            asteroidsEnabled: true,
+            facts: ["Halley returns to Earth's skies every 75-76 years.", 'The next visible return of the comet will be in July 2061.']
+          },
+          {
+            id: 'alignment2000',
+            title: 'Grand Planetary Alignment',
+            date: 'May 5, 2000',
+            badge: 'ALIGNMENT',
+            badgeColor: 'bg-purple-500/10 text-slate-400 border-purple-500/20',
+            desc: 'A rare celestial alignment of Mercury, Venus, Earth, Mars, Jupiter, and Saturn in a single horizontal arc.',
+            focusId: 'sun',
+            timeValue: 0,
+            speed: 0,
+            facts: ['The planetary gravitational influence on Earth during the alignment was completely negligible.', 'Alignments are beautiful optical gatherings but do not affect orbital stability.']
+          },
+          {
+            id: 'jwst2021',
+            title: 'James Webb Space Observatory',
+            date: 'December 25, 2021',
+            badge: 'TELESCOPE',
+            badgeColor: 'bg-slate-800 text-slate-400 border-rose-500/20',
+            desc: 'Launch and deployment of the massive gold-mirrored infrared space telescope to the L2 Lagrange Point.',
+            focusId: 'jwst',
+            timeValue: 950,
+            speed: 0.5,
+            facts: ['Its mirrors are coated in a microscopic layer of pure gold for high-efficiency infrared reflection.', 'Can peer back 13.5 billion years to witness the formation of the first galaxies.']
+          },
+          {
+            id: 'alignment2040',
+            title: 'Future Planetary Conjunction',
+            date: 'September 8, 2040',
+            badge: 'FUTURE',
+            badgeColor: 'bg-blue-500/10 text-slate-400 border-blue-500/20',
+            desc: 'A spectacular prospective alignment of Mars, Mercury, Venus, Jupiter, and Saturn clustered tightly.',
+            focusId: 'sun',
+            timeValue: 0,
+            speed: 0,
+            facts: ['Will be visible to the naked eye globally in the evening twilight.', 'Occurs within a 9-degree visual circle in the sky.']
+          }
+        ];
+
+        const matchedEvt = events.find(e => e.id.toLowerCase().replace(/_/g, '') === evtId || e.id.includes(evtId) || evtId.includes(e.id));
+        if (matchedEvt) {
+          if (matchedEvt.focusId === 'sun') {
+            stateRef.current.lockedPlanetId = 'sun';
+            setSelectedPlanet('sun');
+          } else {
+            const targetObj = [...PLANETS, ...SPACECRAFTS, ...PLANETS.flatMap(p => p.moons || [])].find(x => x.id === matchedEvt.focusId);
+            if (targetObj) handleSelectBody(targetObj, true);
+          }
+          stateRef.current.time = matchedEvt.timeValue;
+          setSpeedMultiplier(matchedEvt.speed);
+          if (matchedEvt.asteroidsEnabled) setShowAsteroids(true);
+          setActiveTimeEvent(matchedEvt);
+        }
+        break;
+      }
+      case 'set_audio': {
+        if (rawAction.ambienceVolume !== undefined || rawAction.musicVolume !== undefined) {
+          const v = parseFloat(rawAction.ambienceVolume ?? rawAction.musicVolume);
+          if (!isNaN(v)) setAmbienceVolume(Math.max(0, Math.min(100, v)));
+        }
+        if (rawAction.tapVolume !== undefined || rawAction.soundVolume !== undefined) {
+          const v = parseFloat(rawAction.tapVolume ?? rawAction.soundVolume);
+          if (!isNaN(v)) setTapVolume(Math.max(0, Math.min(100, v)));
+        }
+        if (rawAction.mute) {
+          setAmbienceVolume(0);
+        }
+        break;
+      }
+      case 'open_search': {
+        if (rawAction.query) setSearchQuery(String(rawAction.query));
+        if (rawAction.category) setSearchCategory(String(rawAction.category) as any);
+        setIsSearchOpen(true);
+        break;
+      }
+      case 'batch': {
+        if (Array.isArray(rawAction.actions)) {
+          rawAction.actions.forEach(a => handleAIAction(a));
+        }
+        break;
+      }
       case 'set_ai_effect': {
         const effect = String(rawAction.effect || rawAction.name || '').toLowerCase();
         const enabled = rawAction.enabled !== undefined ? !!rawAction.enabled : true;
-        if (effect.includes('aura') || effect.includes('lensing')) setAiAuraEffect(enabled);
-        if (effect.includes('grid') || effect.includes('quantum')) setAiGridWave(enabled);
-        if (effect.includes('plasma') || effect.includes('thermal')) setAiPlasmaGlow(enabled);
-        if (effect.includes('nebula') || effect.includes('aurora')) setAiNebulaPulse(enabled);
+        let newAura = aiAuraEffect;
+        let newGrid = aiGridWave;
+        let newPlasma = aiPlasmaGlow;
+        let newNebula = aiNebulaPulse;
+        let newCustomEnabled = aiCustomShaderEnabled;
+        let newWgsl = aiCustomWgslCode;
+
+        if (effect.includes('aura') || effect.includes('lensing')) { newAura = enabled; setAiAuraEffect(enabled); }
+        if (effect.includes('grid') || effect.includes('quantum')) { newGrid = enabled; setAiGridWave(enabled); }
+        if (effect.includes('plasma') || effect.includes('thermal')) { newPlasma = enabled; setAiPlasmaGlow(enabled); }
+        if (effect.includes('nebula') || effect.includes('aurora')) { newNebula = enabled; setAiNebulaPulse(enabled); }
 
         const wgsl = rawAction.wgslCode || rawAction.wgsl || rawAction.code || rawAction.shader;
         if (effect.includes('custom') || effect.includes('shader') || effect.includes('wgsl') || wgsl || !effect) {
+          newCustomEnabled = enabled;
           setAiCustomShaderEnabled(enabled);
           if (wgsl && typeof wgsl === 'string') {
+            newWgsl = wgsl;
             setAiCustomWgslCode(wgsl);
           }
         }
+
+        recompileWebGpuPipeline({
+          aiAuraEffect: newAura,
+          aiGridWave: newGrid,
+          aiPlasmaGlow: newPlasma,
+          aiNebulaPulse: newNebula,
+          aiCustomShaderEnabled: newCustomEnabled,
+          aiCustomWgslCode: newWgsl,
+        });
         break;
       }
       case 'apply_preset': {
@@ -1175,6 +1711,11 @@ useEffect(() => {
         else if (name === 'enablecosmicdust' || name === 'cosmicdust' || name === 'dust' || name === 'particles') name = 'enableCosmicDust';
         else if (name === 'enablevignette' || name === 'vignette') name = 'enableVignette';
         else if (name === 'fpscap' || name === 'fps' || name === 'framerate') name = 'fpsCap';
+        else if (name === 'ambiencevolume' || name === 'ambience' || name === 'musicvolume') name = 'ambienceVolume';
+        else if (name === 'tapvolume' || name === 'soundvolume' || name === 'uivolume') name = 'tapVolume';
+        else if (name === 'wasdspeed' || name === 'cameraspeed') name = 'wasdSpeed';
+        else if (name === 'uianimations' || name === 'animations') name = 'uiAnimations';
+        else if (name === 'uianimspeed' || name === 'animspeed') name = 'uiAnimSpeed';
         else if (name === 'aiauraeffect' || name === 'auraeffect' || name === 'lensingeffect' || name === 'cosmiclensing') name = 'aiAuraEffect';
         else if (name === 'aigridwave' || name === 'gridwave' || name === 'quantumgrid') name = 'aiGridWave';
         else if (name === 'aiplasmaglow' || name === 'plasmaglow' || name === 'thermalheatmap') name = 'aiPlasmaGlow';
@@ -1194,8 +1735,10 @@ useEffect(() => {
           setHdMode(!!value);
         }
         else if (name === 'tempUnit') {
-          const u = String(value).toUpperCase();
-          if (u === 'C' || u === 'F') setTempUnit(u as 'C' | 'F');
+          const u = String(value).toUpperCase().trim();
+          if (u === 'C' || u === 'CELSIUS') setTempUnit('C');
+          else if (u === 'F' || u === 'FAHRENHEIT') setTempUnit('F');
+          else if (u === 'K' || u === 'KELVIN') setTempUnit('K');
         }
         else if (name === 'speedMultiplier') {
           const numVal = parseFloat(value);
@@ -1262,6 +1805,25 @@ useEffect(() => {
           const fpsNum = parseInt(value, 10);
           if (!isNaN(fpsNum)) setFpsCap(fpsNum);
         }
+        else if (name === 'ambienceVolume') {
+          const v = parseFloat(value);
+          if (!isNaN(v)) setAmbienceVolume(Math.max(0, Math.min(100, v)));
+        }
+        else if (name === 'tapVolume') {
+          const v = parseFloat(value);
+          if (!isNaN(v)) setTapVolume(Math.max(0, Math.min(100, v)));
+        }
+        else if (name === 'wasdSpeed') {
+          const s = parseFloat(value);
+          if (!isNaN(s)) setWasdSpeed(Math.max(0.5, Math.min(5.0, s)));
+        }
+        else if (name === 'uiAnimations') {
+          setUiAnimations(!!value);
+        }
+        else if (name === 'uiAnimSpeed') {
+          const sp = parseFloat(value);
+          if (!isNaN(sp)) setUiAnimSpeed(Math.max(0.5, Math.min(3.0, sp)));
+        }
         else if (name === 'aiAuraEffect') {
           setAiAuraEffect(!!value);
         }
@@ -1287,26 +1849,11 @@ useEffect(() => {
         break;
     }
   };
-  
-  const stateRef = useRef({
-    cameraX: 0,
-    cameraY: 0,
-    zoom: 1,
-    targetZoom: 1,
-    isDragging: false,
-    lastX: 0,
-    lastY: 0,
-    time: 0,
-    glows: {} as Record<string, number>,
-    lockedPlanetId: null as string | null,
-    lastLockedPlanetId: null as string | null,
-    isCameraLocked: false,
-    focusFactor: 0,
-    mouseX: 0,
-    mouseY: 0
-  });
 
   const audioContext = useRef<AudioContext | null>(null);
+  const ambienceGainRef = useRef<GainNode | null>(null);
+  const ambienceOscRefs = useRef<OscillatorNode[]>([]);
+  const ambienceFilterRef = useRef<BiquadFilterNode | null>(null);
   const configRef = useRef({ speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, selectedPlanet, hoveredPlanet, lang, deviceType, resScale, sharpenLevel, graphicsPreset, enableBloom, enableChromatic, enableLensFlare, enableCosmicDust, enableVignette, wasdSpeed, aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode, isModalOpen: isSettingsOpen || isSearchOpen || isAIResearcherOpen, isSearchOpen, isAIResearcherOpen });
   
   useEffect(() => {
@@ -1317,6 +1864,7 @@ useEffect(() => {
   interface WebGPURenderer {
     device: GPUDevice;
     context: GPUCanvasContext;
+    format: GPUTextureFormat;
     pipeline: GPURenderPipeline;
     sampler: GPUSampler;
     uniformBuffer: GPUBuffer;
@@ -1385,7 +1933,9 @@ useEffect(() => {
           alphaMode: 'opaque'
         });
 
-        const wgslCode = `
+        const wgslCode = buildWgslShaderSource();
+
+        const unusedOldWgsl = "" /*
           struct Uniforms {
             sharpness: f32,
             inputWidth: f32,
@@ -1703,7 +2253,7 @@ useEffect(() => {
 
             return vec4f(clamp(outputColor, vec3f(0.0), vec3f(1.0)), 1.0);
           }
-        `;
+        */ "";
 
         const module = device.createShaderModule({ code: wgslCode });
 
@@ -1738,6 +2288,7 @@ useEffect(() => {
         webgpuRef.current = {
           device,
           context,
+          format,
           pipeline,
           sampler,
           uniformBuffer,
@@ -1759,6 +2310,51 @@ useEffect(() => {
         setWebGpuDisabledReason(err?.message || 'WebGPU pipeline creation or shader compilation error.');
       }
     };
+
+  const recompileWebGpuPipeline = useCallback((overrideOptions?: {
+    aiAuraEffect?: boolean;
+    aiGridWave?: boolean;
+    aiPlasmaGlow?: boolean;
+    aiNebulaPulse?: boolean;
+    aiCustomShaderEnabled?: boolean;
+    aiCustomWgslCode?: string;
+  }) => {
+    const gpu = webgpuRef.current;
+    if (!gpu || !gpu.device) return;
+
+    try {
+      const code = buildWgslShaderSource();
+
+      const module = gpu.device.createShaderModule({ code });
+      const pipeline = gpu.device.createRenderPipeline({
+        layout: 'auto',
+        vertex: {
+          module,
+          entryPoint: 'vs_main',
+        },
+        fragment: {
+          module,
+          entryPoint: 'fs_main',
+          targets: [{ format: gpu.format }],
+        },
+        primitive: {
+          topology: 'triangle-list',
+        },
+      });
+
+      gpu.pipeline = pipeline;
+      gpu.bindGroup = null;
+      console.log('WebGPU visual post-processing pipeline recompiled successfully on the fly!');
+    } catch (err: any) {
+      console.warn('WebGPU custom shader compilation skipped or invalid code:', err);
+    }
+  }, [aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode]);
+
+  useEffect(() => {
+    if (webgpuRef.current && webgpuRef.current.device) {
+      recompileWebGpuPipeline();
+    }
+  }, [aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode, recompileWebGpuPipeline]);
 
   useEffect(() => {
     if (webgpuInitAttempted.current) return;
@@ -1785,7 +2381,116 @@ useEffect(() => {
     }
   };
 
+  const initAmbience = () => {
+    if (!audioContext.current) {
+      audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioContext.current;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    if (!ambienceGainRef.current) {
+      // Create master gain for ambience
+      const masterGain = ctx.createGain();
+      masterGain.connect(ctx.destination);
+      ambienceGainRef.current = masterGain;
+
+      // Lowpass filter to muffle the sound and make it "deep space"
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 150;
+      filter.connect(masterGain);
+      ambienceFilterRef.current = filter;
+
+      // Create a few very low frequency oscillators for a drone
+      const freqs = [35, 45, 55];
+      freqs.forEach(freq => {
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        
+        // Slightly detune
+        const lfo = ctx.createOscillator();
+        lfo.type = 'sine';
+        lfo.frequency.value = 0.1 + Math.random() * 0.2;
+        const lfoGain = ctx.createGain();
+        lfoGain.gain.value = 2; // +/- 2Hz detune
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+        
+        osc.connect(filter);
+        osc.start();
+        lfo.start();
+        ambienceOscRefs.current.push(osc, lfo);
+      });
+      
+      // Also add some filtered noise for "solar wind"
+      const bufferSize = ctx.sampleRate * 2;
+      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = noiseBuffer;
+      noiseSrc.loop = true;
+      
+      const noiseFilter = ctx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.value = 400;
+      noiseFilter.Q.value = 0.5;
+      
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.3;
+      
+      // Sweep the noise filter frequency slowly
+      const noiseLfo = ctx.createOscillator();
+      noiseLfo.type = 'sine';
+      noiseLfo.frequency.value = 0.05;
+      const noiseLfoGain = ctx.createGain();
+      noiseLfoGain.gain.value = 200;
+      noiseLfo.connect(noiseLfoGain);
+      noiseLfoGain.connect(noiseFilter.frequency);
+      
+      noiseSrc.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(filter);
+      
+      noiseSrc.start();
+      noiseLfo.start();
+    }
+  };
+
+  useEffect(() => {
+    // We update volume whenever it changes
+    if (ambienceGainRef.current) {
+      // Map 0-100 to 0-1 gain roughly
+      const targetGain = (ambienceVolume / 100) * 0.6; 
+      ambienceGainRef.current.gain.setTargetAtTime(targetGain, audioContext.current!.currentTime, 0.5);
+    }
+  }, [ambienceVolume]);
+
+  const handleGlobalClickForAudio = useCallback(() => {
+    initAmbience();
+    if (ambienceGainRef.current && audioContext.current) {
+      const targetGain = (ambienceVolume / 100) * 0.6;
+      ambienceGainRef.current.gain.setTargetAtTime(targetGain, audioContext.current.currentTime, 0.5);
+    }
+    window.removeEventListener('click', handleGlobalClickForAudio);
+    window.removeEventListener('touchstart', handleGlobalClickForAudio);
+  }, [ambienceVolume]);
+
+  useEffect(() => {
+    window.addEventListener('click', handleGlobalClickForAudio);
+    window.addEventListener('touchstart', handleGlobalClickForAudio);
+    return () => {
+      window.removeEventListener('click', handleGlobalClickForAudio);
+      window.removeEventListener('touchstart', handleGlobalClickForAudio);
+    };
+  }, [handleGlobalClickForAudio]);
+
   const playTapSound = () => {
+    if (tapVolume <= 0) return;
     if (!audioContext.current) {
       audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
@@ -1799,8 +2504,10 @@ useEffect(() => {
     osc.frequency.setValueAtTime(400, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.1);
     
+    const maxGain = (tapVolume / 100) * 0.2;
+
     gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 0.02);
+    gainNode.gain.linearRampToValueAtTime(maxGain, ctx.currentTime + 0.02);
     gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
     
     osc.connect(gainNode);
@@ -1939,10 +2646,6 @@ useEffect(() => {
     let lastTickTime = performance.now();
 
     const render = (currentTime: number) => {
-      if (isWebGpuHaltedRef.current) {
-        // Instantly halt rendering loop to prevent browser crash / freeze
-        return;
-      }
       const frameStartTime = performance.now();
       const state = stateRef.current;
       const config = configRef.current;
@@ -3196,7 +3899,7 @@ useEffect(() => {
       state.focusFactor = (state.focusFactor ?? 0) + (targetFocus - (state.focusFactor ?? 0)) * focusLerp;
 
       // 2D Canvas Fallback Vignette Pass (smooth, continuous edge darkening on focus)
-      if (config.enableVignette && !isWebGpuActive) {
+      if (config.enableVignette && !isWebGpuActiveRef.current) {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         const w = ctx.canvas.width;
@@ -3215,8 +3918,8 @@ useEffect(() => {
         ctx.restore();
       }
 
-      // Execute WebGPU FSR RCAS Upscaling Pass if available
-      if (webgpuRef.current && canvasRef.current) {
+      // Execute WebGPU FSR RCAS Upscaling Pass if active & available
+      if (isWebGpuActiveRef.current && webgpuRef.current && canvasRef.current) {
         const gpu = webgpuRef.current;
         const srcCanvas = canvasRef.current;
         const srcW = srcCanvas.width;
@@ -3233,7 +3936,10 @@ useEffect(() => {
               });
               gpu.textureWidth = srcW;
               gpu.textureHeight = srcH;
+              gpu.bindGroup = null;
+            }
 
+            if (!gpu.bindGroup && gpu.inputTexture) {
               gpu.bindGroup = gpu.device.createBindGroup({
                 layout: gpu.pipeline.getBindGroupLayout(0),
                 entries: [
@@ -3244,11 +3950,15 @@ useEffect(() => {
               });
             }
 
-            gpu.device.queue.copyExternalImageToTexture(
-              { source: srcCanvas },
-              { texture: gpu.inputTexture },
-              [srcW, srcH]
-            );
+            try {
+              gpu.device.queue.copyExternalImageToTexture(
+                { source: srcCanvas },
+                { texture: gpu.inputTexture },
+                [srcW, srcH]
+              );
+            } catch (copyErr) {
+              console.warn('WebGPU copyExternalImageToTexture frame copy warning:', copyErr);
+            }
 
             const sunNormX = 0.5 + (state.cameraX / window.innerWidth);
             const sunNormY = 0.5 + (state.cameraY / window.innerHeight);
@@ -3298,11 +4008,7 @@ useEffect(() => {
 
             gpu.device.queue.submit([commandEncoder.finish()]);
           } catch (err: any) {
-            console.warn('WebGPU frame render error:', err);
-            setIsWebGpuActive(false);
-            setIsWebGpuDisabled(true);
-            isWebGpuHaltedRef.current = true;
-            setWebGpuDisabledReason(`WebGPU frame render runtime error: ${err?.message || 'Device context lost'}`);
+            console.warn('WebGPU frame render warning:', err);
           }
         }
       }
@@ -3615,6 +4321,7 @@ useEffect(() => {
     disabled?: boolean;
     shortcut?: string;
     bodyData?: any;
+    _searchStr?: string;
     action: () => void;
   }
 
@@ -3803,12 +4510,15 @@ useEffect(() => {
         id: 'set-temp-unit',
         category: 'Settings',
         title: 'Temperature Unit',
-        subtitle: `Display surface temperatures in °${tempUnit}`,
-        keywords: ['temperature', 'celsius', 'fahrenheit', 'degree', 'c', 'f', 'unit'],
+        subtitle: `Display surface temperatures in ${tempUnit === 'K' ? 'Kelvin (K)' : `°${tempUnit}`}`,
+        keywords: ['temperature', 'celsius', 'fahrenheit', 'kelvin', 'degree', 'c', 'f', 'k', 'unit'],
         icon: <Thermometer className="w-4 h-4 text-slate-400" />,
-        badge: `°${tempUnit}`,
+        badge: tempUnit === 'K' ? 'K' : `°${tempUnit}`,
         badgeType: 'info',
-        action: () => { setTempUnit(tempUnit === 'C' ? 'F' : 'C'); playTapSound(); }
+        action: () => {
+          setTempUnit(prev => (prev === 'C' ? 'F' : prev === 'F' ? 'K' : 'C'));
+          playTapSound();
+        }
       },
       {
         id: 'set-wasd-speed',
@@ -3870,7 +4580,7 @@ useEffect(() => {
         category: 'Settings',
         title: 'AI Stellar Guide Descriptions',
         subtitle: `Use ${aiModel} for real-time body explanations`,
-        keywords: ['ai', 'gemini', 'chatgpt', 'claude', 'mistral', 'grok', 'guide', 'descriptions', 'stellar', 'assistant'],
+        keywords: ['ai', 'gemini', 'chatgpt', 'claude', 'mistral', 'grok', 'spacexai', 'spacex', 'guide', 'descriptions', 'stellar', 'assistant'],
         icon: <Bot className="w-4 h-4 text-slate-400" />,
         badge: useAI ? 'ON' : 'OFF',
         badgeType: useAI ? 'active' : 'inactive',
@@ -3987,7 +4697,7 @@ useEffect(() => {
         category: 'Tools',
         title: 'AI Space Researcher & Assistant',
         subtitle: useAI ? `Inquire about space science powered by ${aiModel}` : 'AI Assistance is disabled in settings',
-        keywords: ['ai', 'researcher', 'gemini', 'chatgpt', 'claude', 'mistral', 'grok', 'assistant', 'ask', 'question', 'physics', 'astronomy'],
+        keywords: ['ai', 'researcher', 'gemini', 'chatgpt', 'claude', 'mistral', 'grok', 'spacexai', 'spacex', 'assistant', 'ask', 'question', 'physics', 'astronomy'],
         icon: <Bot className="w-4 h-4 text-slate-400" />,
         badge: useAI ? aiModel.toUpperCase() : 'DISABLED',
         badgeType: useAI ? 'info' : 'inactive',
@@ -4049,8 +4759,13 @@ useEffect(() => {
       }
     );
 
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      item._searchStr = `${item.title} ${item.subtitle} ${item.category} ${item.keywords.join(' ')}`.toLowerCase();
+    }
+
     return items;
-  }, [t, showOrbits, showLabels, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, graphicsPreset, fpsCap, tempUnit, lang, enableBloom, enableLensFlare, enableCosmicDust, enableVignette, useAI, speedMultiplier, wasdSpeed, aiModel]);
+  }, [t, showOrbits, showLabels, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, graphicsPreset, fpsCap, tempUnit, lang, enableBloom, enableLensFlare, enableCosmicDust, enableVignette, useAI, speedMultiplier === 0, wasdSpeed, aiModel]);
 
   const fpsPresetOptions: DropdownOption[] = useMemo(() => [
     { value: 60, label: '60 FPS' },
@@ -4068,7 +4783,7 @@ useEffect(() => {
     { value: 'ChatGPT', label: 'ChatGPT (OpenAI)' },
     { value: 'Claude', label: 'Claude (Anthropic)' },
     { value: 'Mistral', label: 'Mistral AI' },
-    { value: 'Grok', label: 'Grok (xAI)' },
+    { value: 'Grok', label: 'Grok (SpaceXAI)' },
   ], []);
 
   const compareBodyOptions: DropdownOption[] = useMemo(() => {
@@ -4180,7 +4895,7 @@ useEffect(() => {
   };
 
   const superSearchResults = useMemo(() => {
-    const rawQuery = searchQuery.trim();
+    const rawQuery = deferredSearchQuery.trim();
     const query = rawQuery.toLowerCase();
     
     const isAiTrigger = query.startsWith('@');
@@ -4242,11 +4957,7 @@ useEffect(() => {
           if (!cleanedQuery) return true;
         }
 
-        const matchTitle = item.title.toLowerCase().includes(query);
-        const matchSub = item.subtitle.toLowerCase().includes(query);
-        const matchCat = item.category.toLowerCase().includes(query);
-        const matchKW = item.keywords.some(kw => kw.toLowerCase().includes(query));
-        return matchTitle || matchSub || matchCat || matchKW;
+        return (item._searchStr || `${item.title} ${item.subtitle} ${item.category} ${item.keywords.join(' ')}`.toLowerCase()).includes(query);
       });
     }
 
@@ -4258,11 +4969,12 @@ useEffect(() => {
       Tools: []
     };
 
-    filtered.forEach(item => {
+    for (let i = 0; i < filtered.length; i++) {
+      const item = filtered[i];
       if (groups[item.category]) {
         groups[item.category].push(item);
       }
-    });
+    }
 
     // Flat list for keyboard index selection
     const flatList: SuperSearchItem[] = [];
@@ -4273,31 +4985,58 @@ useEffect(() => {
 
     const orderedCategories: ('Celestial' | 'Settings' | 'Actions' | 'Tools')[] = ['Celestial', 'Settings', 'Actions', 'Tools'];
     
-    orderedCategories.forEach(cat => {
+    for (let i = 0; i < orderedCategories.length; i++) {
+      const cat = orderedCategories[i];
       if (groups[cat].length > 0) {
         flatList.push(...groups[cat]);
       }
-    });
+    }
 
-    const matchQuery = (i: SuperSearchItem) => !query || i.title.toLowerCase().includes(query) || i.subtitle.toLowerCase().includes(query) || i.keywords.some(kw => kw.toLowerCase().includes(query));
+    // Single-pass fast count
+    const catCounts = { All: 0, Celestial: 0, Settings: 0, Actions: 0, Tools: 0 };
+    if (!query) {
+      catCounts.All = allSearchItems.length;
+      for (let i = 0; i < allSearchItems.length; i++) {
+        const item = allSearchItems[i];
+        if (item.category in catCounts) {
+          catCounts[item.category as 'Celestial' | 'Settings' | 'Actions' | 'Tools']++;
+        }
+      }
+    } else {
+      for (let i = 0; i < allSearchItems.length; i++) {
+        const item = allSearchItems[i];
+        const str = item._searchStr || `${item.title} ${item.subtitle} ${item.category} ${item.keywords.join(' ')}`.toLowerCase();
+        if (str.includes(query)) {
+          catCounts.All++;
+          if (item.category in catCounts) {
+            catCounts[item.category as 'Celestial' | 'Settings' | 'Actions' | 'Tools']++;
+          }
+        }
+      }
+    }
 
     return {
       groups,
       flatList,
       totalCount: filtered.length,
-      counts: {
-        All: allSearchItems.filter(matchQuery).length,
-        Celestial: allSearchItems.filter(i => i.category === 'Celestial' && matchQuery(i)).length,
-        Settings: allSearchItems.filter(i => i.category === 'Settings' && matchQuery(i)).length,
-        Actions: allSearchItems.filter(i => i.category === 'Actions' && matchQuery(i)).length,
-        Tools: allSearchItems.filter(i => i.category === 'Tools' && matchQuery(i)).length
-      }
+      counts: catCounts
     };
-  }, [allSearchItems, searchQuery, searchCategory, celestialFilter]);
+  }, [allSearchItems, deferredSearchQuery, searchCategory, celestialFilter]);
+
+  const isExcludedPreviewCategory = useMemo(() => {
+    return ['Settings', 'Actions', 'Tools', 'Compare', 'Distance', 'TimeTravel'].includes(searchCategory);
+  }, [searchCategory]);
 
   const activeCelestialBody = useMemo(() => {
+    if (isExcludedPreviewCategory) {
+      return null;
+    }
+
     const item = hoveredSearchItem || (superSearchResults.flatList[searchSelectedIndex] ?? null);
     if (item) {
+      if (item.category && item.category !== 'Celestial') {
+        return null;
+      }
       if (item.bodyData) {
         return item.bodyData;
       }
@@ -4311,11 +5050,10 @@ useEffect(() => {
         ];
         return allBodies.find(b => b.id === rawId) || null;
       }
-      // If a setting, tool, calculator, or non-celestial item is highlighted in search, return null
       return null;
     }
 
-    if (selectedPlanet) {
+    if (searchCategory === 'Celestial' && selectedPlanet) {
       const allBodies = [
         ...PLANETS.flatMap(p => [p, ...(p.moons || [])]),
         ...CONSTELLATIONS.map(c => ({ id: c.id, name: c.id, nameKey: c.nameKey, color: c.color })),
@@ -4326,11 +5064,11 @@ useEffect(() => {
     }
 
     return null;
-  }, [hoveredSearchItem, superSearchResults.flatList, searchSelectedIndex, selectedPlanet]);
+  }, [isExcludedPreviewCategory, hoveredSearchItem, superSearchResults.flatList, searchSelectedIndex, searchCategory, selectedPlanet]);
 
   useEffect(() => {
     setSearchSelectedIndex(0);
-  }, [searchQuery, searchCategory]);
+  }, [deferredSearchQuery, searchCategory]);
 
   useEffect(() => {
     if (isSearchOpen) {
@@ -4340,31 +5078,6 @@ useEffect(() => {
       }
     }
   }, [searchSelectedIndex, isSearchOpen]);
-
-  useEffect(() => {
-    if (isSearchOpen) {
-      const timer = setTimeout(() => {
-        if (searchScrollRef.current) {
-          setSearchScrollTop(searchScrollRef.current.scrollTop);
-          setSearchScrollHeight(searchScrollRef.current.scrollHeight);
-          setSearchClientHeight(searchScrollRef.current.clientHeight);
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isSearchOpen, searchQuery, searchCategory, celestialFilter, cliFeedback, compareLeftId, compareRightId, calcSourceId, calcTargetId, calcSpeedType, calcCustomSpeed]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (isSearchOpen && searchScrollRef.current) {
-        setSearchScrollTop(searchScrollRef.current.scrollTop);
-        setSearchScrollHeight(searchScrollRef.current.scrollHeight);
-        setSearchClientHeight(searchScrollRef.current.clientHeight);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [isSearchOpen]);
 
   return (
     <MotionConfig transition={uiAnimations ? { duration: 0.3 / uiAnimSpeed } : { duration: 0 }}>
@@ -4405,14 +5118,7 @@ useEffect(() => {
           );
         })()}
 
-        {/* WebGPU Output Canvas (Displays WebGPU FSR spatial upscaling pass) */}
-        <canvas
-          ref={webgpuCanvasRef}
-          style={{ touchAction: 'none', pointerEvents: 'none' }}
-          className={`absolute inset-0 block w-full h-full pointer-events-none z-[0] transition-opacity duration-300 ${isWebGpuActive ? 'opacity-100' : 'opacity-0'}`}
-        />
-
-        {/* Interactive 2D Simulation Canvas */}
+        {/* Interactive 2D Simulation Canvas (Always active & visible at z-0 so browser compositor commits backing GPU textures) */}
         <canvas
           ref={canvasRef}
           onPointerDown={handlePointerDown}
@@ -4426,7 +5132,14 @@ useEffect(() => {
             touchAction: 'none',
             filter: (!isWebGpuActive && resScale < 1) ? 'url(#res-scale-sharpen) contrast(1.03) saturate(1.02)' : 'none'
           }}
-          className={`block cursor-grab active:cursor-grabbing w-full h-full relative z-[0] ${isWebGpuActive ? 'opacity-0' : 'opacity-100'}`}
+          className="absolute inset-0 block cursor-grab active:cursor-grabbing w-full h-full z-[0]"
+        />
+
+        {/* WebGPU Output Canvas (Displays WebGPU FSR spatial upscaling pass at z-1) */}
+        <canvas
+          ref={webgpuCanvasRef}
+          style={{ touchAction: 'none', pointerEvents: 'none' }}
+          className={`absolute inset-0 block w-full h-full pointer-events-none z-[1] transition-opacity duration-300 ${isWebGpuActive ? 'opacity-100' : 'opacity-0'}`}
         />
 
         {/* Sharp text layer for celestial body names at native resolution */}
@@ -4514,7 +5227,7 @@ useEffect(() => {
                     } 
                   : { duration: 0 }
               }
-              className="panel relative z-10 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] h-[85vh] overflow-hidden flex flex-col dual-kawase-glass glass-specular border border-white/20 pointer-events-auto"
+              className="panel relative z-10 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] h-[85vh] overflow-hidden flex flex-col dual-kawase-glass glass-specular border border-white/20 pointer-events-auto"
             >
               <div className="w-full h-full flex flex-col overflow-hidden">
                 
@@ -4538,7 +5251,7 @@ useEffect(() => {
                 <div className="flex border-b border-white/10 bg-slate-950/40 p-1.5 px-4 gap-1.5 shrink-0 relative overflow-x-auto custom-scrollbar">
                   {[
                     { id: 'graphics', label: 'Graphics & FX', icon: <Sparkles className="w-3.5 h-3.5 shrink-0" /> },
-                    { id: 'ai_effects', label: 'AI Graphics Effects', icon: <Wand2 className="w-3.5 h-3.5 shrink-0" /> },
+                    { id: 'audio', label: 'Audio & Ambience', icon: <Volume2 className="w-3.5 h-3.5 shrink-0" /> },
                     { id: 'simulation', label: 'Simulation Controls', icon: <Gauge className="w-3.5 h-3.5 shrink-0" /> },
                     { id: 'preferences', label: 'General & AI', icon: <Globe className="w-3.5 h-3.5 shrink-0" /> }
                   ].map(tab => {
@@ -4765,115 +5478,77 @@ useEffect(() => {
                     </div>
                   )}
 
-                  {/* TAB 2: AI GRAPHICS EFFECTS & WEBGPU SHADERS */}
-                  {settingsTab === 'ai_effects' && (
+                  {/* AUDIO & AMBIENCE TAB */}
+                  {settingsTab === 'audio' && (
                     <div className="space-y-6">
-                      {/* Section Header */}
                       <div className="space-y-2.5">
                         <div className="flex items-center gap-1.5 text-slate-400">
-                          <Wand2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <label className="text-xs font-semibold uppercase tracking-wider">AI Graphics Effects & WebGPU Shaders</label>
+                          <Volume2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="text-[10px] font-bold tracking-widest uppercase text-slate-400">Volume Settings</span>
                         </div>
-                        <p className="text-xs text-slate-400 leading-relaxed bg-slate-950/30 p-3 rounded-xl border border-slate-800/60">
-                          Real-time WebGPU shader post-processing pipeline and GPU visual effects generated and configured dynamically on the fly by the Stellar AI Researcher.
+                        <div className="h-px w-full bg-gradient-to-r from-slate-700 to-transparent opacity-50"></div>
+                        <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                          Adjust the deep space ambience and UI interaction sound levels.
                         </p>
                       </div>
 
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                          <div className="flex items-center gap-2.5">
-                            <span className={`w-2.5 h-2.5 rounded-full ${isWebGpuActive ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]'}`} />
-                            <div>
-                              <div className="text-xs font-semibold text-slate-200">
-                                {isWebGpuActive ? 'WebGPU Hardware Acceleration: ACTIVE' : 'WebGPU Hardware Acceleration: DISABLED / FALLBACK'}
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                {isWebGpuActive ? 'W3C WebGPU Pipeline Operational' : '3D Engine Halted / Using 2D Safe Fallback Canvas'}
-                              </div>
+                      <div className="space-y-5">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <div className="flex items-center gap-1.5 font-medium text-slate-300">
+                              <Radio className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Deep Space Ambience</span>
                             </div>
+                            <span className="font-mono text-slate-400 bg-slate-500/10 border border-slate-700/50 px-2 py-0.5 rounded text-[11px] font-semibold">
+                              {ambienceVolume}%
+                            </span>
                           </div>
-                          <button
-                            onClick={() => {
-                              playTapSound();
-                              setIsWebGpuDisabled(true);
-                              if (!webGpuDisabledReason) {
-                                setWebGpuDisabledReason('Manual WebGPU troubleshooting & OS/browser enablement guide open.');
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={ambienceVolume}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setAmbienceVolume(val);
+                              // Trigger start if not already started
+                              if (val > 0 && !ambienceGainRef.current) {
+                                initAmbience();
                               }
                             }}
-                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-cyan-200 border border-slate-700/80 text-xs font-medium transition-colors"
-                          >
-                            Enable WebGPU Guide
-                          </button>
-                        </div>
-
-                      {/* AI Effect Toggles */}
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <Zap className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <label className="text-xs font-semibold uppercase tracking-wider">Active WebGPU Post-FX Modules</label>
-                        </div>
-
-                        <div className="space-y-2 bg-slate-950/30 p-3 rounded-xl border border-slate-800/60">
-                          <Toggle 
-                            label="Cosmic Gravitational Lensing Singularity" 
-                            checked={aiAuraEffect} 
-                            onChange={(v) => { playTapSound(); setAiAuraEffect(v); }} 
-                          />
-                          <Toggle 
-                            label="Quantum Space-Time Grid Wave" 
-                            checked={aiGridWave} 
-                            onChange={(v) => { playTapSound(); setAiGridWave(v); }} 
-                          />
-                          <Toggle 
-                            label="Solar Thermal Heatmap Plasma Glow" 
-                            checked={aiPlasmaGlow} 
-                            onChange={(v) => { playTapSound(); setAiPlasmaGlow(v); }} 
-                          />
-                          <Toggle 
-                            label="Nebula Aurora Ionization Shield" 
-                            checked={aiNebulaPulse} 
-                            onChange={(v) => { playTapSound(); setAiNebulaPulse(v); }} 
-                          />
-                          <Toggle 
-                            label="Custom AI-Generated WGSL Shader Pipeline" 
-                            checked={aiCustomShaderEnabled} 
-                            onChange={(v) => { playTapSound(); setAiCustomShaderEnabled(v); }} 
+                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400 focus:outline-none"
                           />
                         </div>
-                      </div>
 
-                      {/* WGSL Code Live Inspector */}
-                      <div className="space-y-2.5">
-                        <div className="flex items-center justify-between text-slate-400">
-                          <div className="flex items-center gap-1.5">
-                            <Cpu className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <label className="text-xs font-semibold uppercase tracking-wider">Active WGSL Shader Source (W3C WebGPU Standard)</label>
+                        <div className="space-y-2 pt-2 border-t border-slate-800/60">
+                          <div className="flex justify-between items-center text-xs">
+                            <div className="flex items-center gap-1.5 font-medium text-slate-300">
+                              <Headphones className="w-3.5 h-3.5 text-slate-400" />
+                              <span>UI Tap Sound Volume</span>
+                            </div>
+                            <span className="font-mono text-slate-400 bg-slate-500/10 border border-slate-700/50 px-2 py-0.5 rounded text-[11px] font-semibold">
+                              {tapVolume}%
+                            </span>
                           </div>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">Modern WGSL (vec2f / vec4f)</span>
-                        </div>
-
-                        <div className="relative rounded-xl overflow-hidden border border-slate-800/80 bg-slate-950/80 p-3 font-mono text-[11px] text-slate-300">
-                          <textarea
-                            value={aiCustomWgslCode}
-                            onChange={(e) => setAiCustomWgslCode(e.target.value)}
-                            rows={7}
-                            className="w-full bg-transparent resize-none outline-none font-mono text-[11px] text-slate-300 leading-relaxed custom-scrollbar"
-                            spellCheck={false}
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-1">
-                          <button
-                            onClick={() => {
-                              playTapSound();
-                              setIsSettingsOpen(false);
-                              setAiResearcherQuestion("Generate a brand new custom WebGPU WGSL post-processing shader effect for the simulator that creates an oscillating cosmic warp distortion!");
-                              setIsAIResearcherOpen(true);
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={tapVolume}
+                            onChange={(e) => {
+                              setTapVolume(parseFloat(e.target.value));
                             }}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 text-xs font-semibold transition-all shadow-md active:scale-[0.98]"
-                          >
-                            <Sparkles className="w-3.5 h-3.5 text-slate-300" />
-                            <span>Ask AI Researcher to Generate New WebGPU Shader Effect</span>
-                          </button>
+                            onMouseUp={() => {
+                              // Play a tiny bit to preview
+                              playTapSound();
+                            }}
+                            onTouchEnd={() => {
+                              playTapSound();
+                            }}
+                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400 focus:outline-none"
+                          />
                         </div>
                       </div>
                     </div>
@@ -5056,6 +5731,14 @@ useEffect(() => {
                                 }`}
                               >
                                 °F
+                              </button>
+                              <button
+                                onClick={() => { playTapSound(); setTempUnit('K'); }}
+                                className={`px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-all ${
+                                  tempUnit === 'K' ? 'bg-slate-700/60 text-slate-100 shadow-sm border border-slate-600/50' : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                K
                               </button>
                             </div>
                           </div>
@@ -5290,7 +5973,7 @@ useEffect(() => {
                         {isActive && (
                           <motion.div
                             layoutId="searchCategoryActivePill"
-                            className="absolute inset-0 dual-kawase-glass-card border border-slate-500/50 rounded-lg shadow-md z-[-1]"
+                            className="!absolute inset-0 dual-kawase-glass-card border border-slate-500/50 rounded-lg shadow-md z-[-1]"
                             transition={uiAnimations ? { type: "spring", stiffness: 450, damping: 32 } : { duration: 0 }}
                           />
                         )}
@@ -5343,17 +6026,15 @@ useEffect(() => {
                 <div className="relative flex-1 min-h-0">
                   <div 
                     ref={searchScrollRef}
-                    onScroll={handleSearchScroll}
                     className="h-full overflow-y-auto p-2 pr-3.5 space-y-1"
                   >
                   <AnimatePresence mode="popLayout" initial={false}>
                     <motion.div
                       key={`${searchCategory}-${searchCategory === 'Celestial' ? celestialFilter : ''}`}
-                      initial={{ opacity: 0, y: 6, scale: 0.99 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -6, scale: 0.99 }}
-                      transition={uiAnimations ? { duration: 0.18 / uiAnimSpeed, ease: "easeOut" } : { duration: 0 }}
-                      layout
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={uiAnimations ? { duration: 0.15 / uiAnimSpeed, ease: "easeOut" } : { duration: 0 }}
                     >
                   {cliFeedback && (
                     <div className={`p-3 mx-2 my-1.5 rounded-xl border flex items-center gap-2.5 ${
@@ -5529,7 +6210,7 @@ useEffect(() => {
                               {[
                                 { label: 'Classification', lVal: leftDetails?.type || 'N/A', rVal: rightDetails?.type || 'N/A' },
                                 { label: 'Mass', lVal: leftDetails?.mass || 'N/A', rVal: rightDetails?.mass || 'N/A' },
-                                { label: 'Avg Temp', lVal: leftDetails?.temp || 'N/A', rVal: rightDetails?.temp || 'N/A' },
+                                { label: 'Avg Temp', lVal: leftDetails?.temp ? getDisplayTemp(leftDetails.temp) : 'N/A', rVal: rightDetails?.temp ? getDisplayTemp(rightDetails.temp) : 'N/A' },
                                 { label: 'Surface Gravity', lVal: leftDetails?.gravity || 'N/A', rVal: rightDetails?.gravity || 'N/A' }
                               ].map((row, idx) => (
                                 <div key={idx} className="grid grid-cols-3 border-b border-slate-800/40 p-2.5 text-center items-center font-medium">
@@ -6017,7 +6698,7 @@ useEffect(() => {
                                 {isActive && (
                                   <motion.div
                                     layoutId="celestialTagActivePill"
-                                    className="absolute inset-0 dual-kawase-glass-card border border-slate-500/50 rounded-lg shadow-sm z-[-1]"
+                                    className="!absolute inset-0 dual-kawase-glass-card border border-slate-500/50 rounded-lg shadow-sm z-[-1]"
                                     transition={uiAnimations ? { type: "spring", stiffness: 450, damping: 30 } : { duration: 0 }}
                                   />
                                 )}
@@ -6047,16 +6728,11 @@ useEffect(() => {
                           )}
                         </div>
                       ) : (
-                    superSearchResults.flatList.map((item, index) => {
+                    superSearchResults.flatList.slice(0, 60).map((item, index) => {
                       const isSelected = index === searchSelectedIndex;
 
                       return (
-                        <motion.div
-                          layout
-                          initial={{ opacity: 0, scale: 0.98 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.98 }}
-                          transition={uiAnimations ? { duration: 0.15 / uiAnimSpeed } : { duration: 0 }}
+                        <div
                           key={item.id}
                           id={`super-search-item-${index}`}
                           onClick={() => {
@@ -6078,12 +6754,12 @@ useEffect(() => {
                             }
                           }}
                           onMouseLeave={() => setHoveredSearchItem(null)}
-                          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all border ${
+                          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-colors duration-150 border ${
                             item.disabled
                               ? 'opacity-40 cursor-not-allowed border-transparent text-slate-500 bg-slate-900/30'
                               : isSelected
-                              ? 'dual-kawase-glass-card border-slate-500/60 text-white cursor-pointer shadow-lg'
-                              : 'border-transparent text-slate-300 hover:dual-kawase-glass-subtle hover:border-slate-700/50 cursor-pointer'
+                              ? 'bg-slate-800/90 border-slate-500/60 text-white cursor-pointer shadow-md'
+                              : 'border-transparent text-slate-300 hover:bg-slate-800/50 hover:border-slate-700/50 cursor-pointer'
                           }`}
                         >
                           {/* Icon / Orb */}
@@ -6116,7 +6792,7 @@ useEffect(() => {
                               ↵
                             </span>
                           )}
-                        </motion.div>
+                        </div>
                       );
                     })
                   )}</>
@@ -6153,6 +6829,10 @@ useEffect(() => {
                         body={activeCelestialBody}
                         info={BODY_DETAILS[activeCelestialBody.id] || null}
                         tempUnit={tempUnit}
+                        onToggleTempUnit={() => {
+                          playTapSound();
+                          setTempUnit(prev => (prev === 'C' ? 'F' : prev === 'F' ? 'K' : 'C'));
+                        }}
                         onFocusBody={(id) => {
                           stateRef.current.lockedPlanetId = id;
                           setSelectedPlanet(id);
@@ -6307,7 +6987,15 @@ useEffect(() => {
                    <div className="absolute top-0 left-0 w-full h-1" style={{ backgroundColor: planet.color }}></div>
                    <div className="flex items-start justify-between mb-2 mt-1 shrink-0">
                      <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2 mt-0.5" style={{ color: planet.color }}>
-                        {tName}
+                        <span>{tName}</span>
+                        {useAI && isAiGeneratedDesc && (
+                          <span 
+                            className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-900/90 border border-slate-700/80 text-slate-300 select-none shadow-sm" 
+                            title="AI-generated celestial overview"
+                          >
+                            AI
+                          </span>
+                        )}
                      </h3>
                      <button 
                          onClick={() => { playTapSound(); setSelectedPlanet(null); }}
@@ -6410,11 +7098,15 @@ useEffect(() => {
                               <div className="flex justify-between items-center w-full">
                                 <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Temperature</div>
                                 <button 
-                                  onClick={(e) => { e.stopPropagation(); playTapSound(); setTempUnit(prev => prev === 'C' ? 'F' : 'C'); }}
-                                  className="text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-400 px-2 py-0.5 rounded transition-colors opacity-80 hover:opacity-100"
-                                  title={`Switch to ${tempUnit === 'C' ? 'Fahrenheit' : 'Celsius'}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    playTapSound();
+                                    setTempUnit(prev => prev === 'C' ? 'F' : prev === 'F' ? 'K' : 'C');
+                                  }}
+                                  className="text-[10px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-slate-400 px-2 py-0.5 rounded transition-colors opacity-80 hover:opacity-100"
+                                  title={`Switch to ${tempUnit === 'C' ? 'Fahrenheit (°F)' : tempUnit === 'F' ? 'Kelvin (K)' : 'Celsius (°C)'}`}
                                 >
-                                  {tempUnit === 'C' ? '°C' : '°F'}
+                                  {tempUnit === 'C' ? '°C' : tempUnit === 'F' ? '°F' : 'K'}
                                 </button>
                               </div>
                               <div className="relative h-[20px] w-full overflow-hidden mt-0.5">
@@ -6503,13 +7195,7 @@ useEffect(() => {
           enableCosmicDust,
           enableVignette,
           fpsCap,
-          wasdSpeed,
-          aiAuraEffect,
-          aiGridWave,
-          aiPlasmaGlow,
-          aiNebulaPulse,
-          aiCustomShaderEnabled,
-          aiCustomWgslCode
+          wasdSpeed
         } as any}
       />
 

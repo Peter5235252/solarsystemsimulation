@@ -37,9 +37,9 @@ export const GlassPreloader: React.FC = () => {
       }}
     >
       {/* Full-viewport warm-up layers for all 3 frosted glass blur intensities */}
-      <div className="absolute inset-0 dual-kawase-glass" style={{ transform: 'translate3d(0,0,0)', isolation: 'isolate' }} />
-      <div className="absolute inset-0 dual-kawase-glass-subtle" style={{ transform: 'translate3d(0,0,0)', isolation: 'isolate' }} />
-      <div className="absolute inset-0 dual-kawase-glass-card" style={{ transform: 'translate3d(0,0,0)', isolation: 'isolate' }} />
+      <div className="!absolute inset-0 dual-kawase-glass" style={{ transform: 'translate3d(0,0,0)', isolation: 'isolate' }} />
+      <div className="!absolute inset-0 dual-kawase-glass-subtle" style={{ transform: 'translate3d(0,0,0)', isolation: 'isolate' }} />
+      <div className="!absolute inset-0 dual-kawase-glass-card" style={{ transform: 'translate3d(0,0,0)', isolation: 'isolate' }} />
     </div>
   );
 };

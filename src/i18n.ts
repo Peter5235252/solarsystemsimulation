@@ -1,21 +1,21 @@
 export type LanguageCode = 'en' | 'hu' | 'pl' | 'es' | 'el' | 'sk' | 'ja' | 'zh-CN' | 'zh-TW' | 'ar' | 'it' | 'de' | 'fr' | 'ko' | 'ru';
 
 export const LANGUAGES: { code: LanguageCode; name: string; flag: string }[] = [
-  { code: 'en', name: 'English', flag: '🇬🇧' },
-  { code: 'hu', name: 'Magyar', flag: '🇭🇺' },
-  { code: 'pl', name: 'Polski', flag: '🇵🇱' },
-  { code: 'es', name: 'Español', flag: '🇪🇸' },
-  { code: 'el', name: 'Ελληνικά', flag: '🇬🇷' },
-  { code: 'sk', name: 'Slovenčina', flag: '🇸🇰' },
-  { code: 'ja', name: '日本語', flag: '🇯🇵' },
-  { code: 'zh-CN', name: '简体中文', flag: '🇨🇳' },
-  { code: 'zh-TW', name: '繁體中文', flag: '🇹🇼' },
-  { code: 'ar', name: 'العربية', flag: '🇸🇦' },
-  { code: 'it', name: 'Italiano', flag: '🇮🇹' },
-  { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
-  { code: 'fr', name: 'Français', flag: '🇫🇷' },
-  { code: 'ko', name: '한국어', flag: '🇰🇷' },
-  { code: 'ru', name: 'Русский', flag: '🇷🇺' }
+  { code: 'en', name: 'English', flag: 'EN' },
+  { code: 'hu', name: 'Magyar', flag: 'HU' },
+  { code: 'pl', name: 'Polski', flag: 'PL' },
+  { code: 'es', name: 'Español', flag: 'ES' },
+  { code: 'el', name: 'Ελληνικά', flag: 'GR' },
+  { code: 'sk', name: 'Slovenčina', flag: 'SK' },
+  { code: 'ja', name: '日本語', flag: 'JA' },
+  { code: 'zh-CN', name: '简体中文', flag: 'ZH' },
+  { code: 'zh-TW', name: '繁體中文', flag: 'TW' },
+  { code: 'ar', name: 'العربية', flag: 'AR' },
+  { code: 'it', name: 'Italiano', flag: 'IT' },
+  { code: 'de', name: 'Deutsch', flag: 'DE' },
+  { code: 'fr', name: 'Français', flag: 'FR' },
+  { code: 'ko', name: '한국어', flag: 'KO' },
+  { code: 'ru', name: 'Русский', flag: 'RU' }
 ];
 
 type TranslationKeys = 

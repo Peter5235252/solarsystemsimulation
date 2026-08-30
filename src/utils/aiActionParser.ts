@@ -3,10 +3,201 @@ export interface AIAction {
   [key: string]: any;
 }
 
+const VALID_ACTION_TYPES = new Set([
+  'select_planet',
+  'reset_camera',
+  'set_zoom',
+  'set_speed',
+  'pause',
+  'resume',
+  'toggle_pause',
+  'time_travel',
+  'set_setting',
+  'apply_preset',
+  'set_audio',
+  'open_settings',
+  'close_settings',
+  'open_search',
+  'batch'
+]);
+
+/**
+ * Normalizes raw LLM action objects, maps aliases, and filters out hallucinated nonexistent actions.
+ */
+export function normalizeAction(rawAction: any): AIAction | null {
+  if (!rawAction || typeof rawAction !== 'object') return null;
+
+  let type = String(rawAction.type || rawAction.action || rawAction.command || '').toLowerCase().trim().replace(/_/g, '');
+
+  if (!type) return null;
+
+  // Type Aliasing & Mapping
+  if (['selectplanet', 'selectbody', 'focusplanet', 'focusbody', 'focus', 'travel', 'target', 'goto', 'planet', 'select', 'flyto', 'lockplanet', 'lock'].includes(type)) {
+    type = 'select_planet';
+  } else if (['resetcamera', 'reset', 'overview', 'solarsystemview', 'home', 'resetsystem', 'resetview'].includes(type)) {
+    type = 'reset_camera';
+  } else if (['setzoom', 'zoom', 'camerazoom'].includes(type)) {
+    type = 'set_zoom';
+  } else if (['setspeed', 'speed', 'speedmultiplier', 'orbitspeed', 'changespeed', 'warpspeed', 'timeMultiplier'].includes(type)) {
+    type = 'set_speed';
+  } else if (['pause', 'pausesimulation', 'freeze', 'stop'].includes(type)) {
+    type = 'pause';
+  } else if (['resume', 'unpause', 'resumesimulation', 'play', 'start'].includes(type)) {
+    type = 'resume';
+  } else if (['togglepause', 'toggleplay'].includes(type)) {
+    type = 'toggle_pause';
+  } else if (['timetravel', 'settimeevent', 'timeevent', 'warpevent', 'historicevent', 'event', 'jump'].includes(type)) {
+    type = 'time_travel';
+  } else if (['setsetting', 'modifysetting', 'changesetting', 'togglesetting', 'setting'].includes(type)) {
+    type = 'set_setting';
+  } else if (['applypreset', 'setpreset', 'graphicspreset', 'setgraphics', 'preset', 'quality'].includes(type)) {
+    type = 'apply_preset';
+  } else if (['setaudio', 'audiocontrol', 'volume', 'sound', 'mute'].includes(type)) {
+    type = 'set_audio';
+  } else if (['opensettings', 'settings'].includes(type)) {
+    type = 'open_settings';
+  } else if (['closesettings'].includes(type)) {
+    type = 'close_settings';
+  } else if (['opensearch', 'search'].includes(type)) {
+    type = 'open_search';
+  } else if (['batch', 'multiaction', 'sequence'].includes(type)) {
+    type = 'batch';
+  }
+
+  // Reject hallucinated non-existent action types
+  if (!VALID_ACTION_TYPES.has(type)) {
+    return null;
+  }
+
+  const cleanAction: AIAction = { ...rawAction, type };
+
+  // Attribute Normalization
+  if (type === 'select_planet') {
+    if (!cleanAction.id && (cleanAction.target || cleanAction.planet || cleanAction.body || cleanAction.name || cleanAction.bodyId)) {
+      cleanAction.id = cleanAction.target || cleanAction.planet || cleanAction.body || cleanAction.name || cleanAction.bodyId;
+    }
+  } else if (type === 'set_speed') {
+    if (cleanAction.value === undefined && (cleanAction.speed !== undefined || cleanAction.multiplier !== undefined)) {
+      cleanAction.value = cleanAction.speed ?? cleanAction.multiplier;
+    }
+  } else if (type === 'time_travel') {
+    if (!cleanAction.id && (cleanAction.event || cleanAction.eventId || cleanAction.value)) {
+      cleanAction.id = cleanAction.event || cleanAction.eventId || cleanAction.value;
+    }
+  } else if (type === 'apply_preset') {
+    if (!cleanAction.preset && (cleanAction.value || cleanAction.quality)) {
+      cleanAction.preset = cleanAction.value || cleanAction.quality;
+    }
+  } else if (type === 'set_setting') {
+    if (cleanAction.name) {
+      let n = String(cleanAction.name).toLowerCase().replace(/_/g, '');
+      if (n === 'showorbits' || n === 'orbits') cleanAction.name = 'showOrbits';
+      else if (n === 'showlabels' || n === 'labels') cleanAction.name = 'showLabels';
+      else if (n === 'showasteroids' || n === 'asteroids') cleanAction.name = 'showAsteroids';
+      else if (n === 'showconstellations' || n === 'constellations') cleanAction.name = 'showConstellations';
+      else if (n === 'showspacecraft' || n === 'spacecraft') cleanAction.name = 'showSpacecraft';
+      else if (n === 'perfmode' || n === 'performance') cleanAction.name = 'perfMode';
+      else if (n === 'hdmode' || n === 'hd') cleanAction.name = 'hdMode';
+      else if (n === 'tempunit' || n === 'temperature') cleanAction.name = 'tempUnit';
+      else if (n === 'resscale' || n === 'fsr') cleanAction.name = 'resScale';
+      else if (n === 'graphicspreset' || n === 'preset') cleanAction.name = 'graphicsPreset';
+      else if (n === 'enablebloom' || n === 'bloom') cleanAction.name = 'enableBloom';
+      else if (n === 'enablechromatic' || n === 'chromatic') cleanAction.name = 'enableChromatic';
+      else if (n === 'enablelensflare' || n === 'lensflare') cleanAction.name = 'enableLensFlare';
+      else if (n === 'enablecosmicdust' || n === 'cosmicdust') cleanAction.name = 'enableCosmicDust';
+      else if (n === 'enablevignette' || n === 'vignette') cleanAction.name = 'enableVignette';
+    }
+  } else if (type === 'batch') {
+    if (Array.isArray(cleanAction.actions)) {
+      cleanAction.actions = cleanAction.actions
+        .map((a: any) => normalizeAction(a))
+        .filter((a: any): a is AIAction => a !== null);
+    }
+  }
+
+  return cleanAction;
+}
+
+/**
+ * Returns a human-readable title and details for the Action Dispatched UI badge.
+ */
+export function getDispatchedActionInfo(act: AIAction): { label: string; details: string } {
+  if (!act || !act.type) return { label: 'Action', details: 'Executed' };
+
+  switch (act.type) {
+    case 'select_planet': {
+      const rawId = act.id || act.bodyId || act.target || act.planet || act.name;
+      if (!rawId || rawId === 'null' || rawId === 'none' || rawId === 'deselect' || rawId === 'reset') {
+        return { label: 'Camera Target', details: 'Solar System Overview' };
+      }
+      return { label: 'Camera Target', details: `Focus: ${String(rawId).toUpperCase().replace(/_/g, ' ')}` };
+    }
+    case 'reset_camera':
+      return { label: 'Camera Reset', details: 'Solar System Overview' };
+    case 'set_zoom': {
+      const val = act.value ?? act.zoom ?? act.level;
+      if (val === 'in' || val === 'zoomin') return { label: 'Camera Zoom', details: 'Zoom In' };
+      if (val === 'out' || val === 'zoomout') return { label: 'Camera Zoom', details: 'Zoom Out' };
+      return { label: 'Camera Zoom', details: `Level: ${val}x` };
+    }
+    case 'set_speed': {
+      const spd = act.value ?? act.speed ?? act.multiplier ?? 1;
+      return { label: 'Orbit Speed', details: `Multiplier: ${spd}x` };
+    }
+    case 'pause':
+      return { label: 'Simulation State', details: 'Paused' };
+    case 'resume':
+      return { label: 'Simulation State', details: 'Resumed' };
+    case 'toggle_pause':
+      return { label: 'Simulation State', details: 'Play/Pause Toggled' };
+    case 'time_travel': {
+      const evtId = String(act.id || act.event || '').toLowerCase();
+      const eventNames: Record<string, string> = {
+        apollo11: 'Apollo 11 Landing (1969)',
+        voyager1: 'Voyager 1 Launch (1977)',
+        halley1986: "Halley's Comet (1986)",
+        alignment2000: 'Grand Alignment (2000)',
+        jwst2021: 'JWST Deployment (2021)',
+        alignment2040: 'Future Alignment (2040)'
+      };
+      const name = eventNames[evtId] || evtId.toUpperCase();
+      return { label: 'Time Travel Event', details: name };
+    }
+    case 'set_setting': {
+      const name = act.name || 'Setting';
+      const val = act.value !== undefined ? String(act.value) : '';
+      return { label: 'Simulator Setting', details: `${name} = ${val}` };
+    }
+    case 'apply_preset': {
+      const preset = String(act.preset || act.value || 'Custom').toUpperCase();
+      return { label: 'Graphics Preset', details: preset };
+    }
+    case 'set_audio': {
+      if (act.mute) return { label: 'Audio', details: 'Muted' };
+      const amb = act.ambienceVolume ?? act.musicVolume;
+      const tap = act.tapVolume ?? act.soundVolume;
+      const parts: string[] = [];
+      if (amb !== undefined) parts.push(`Ambience: ${amb}%`);
+      if (tap !== undefined) parts.push(`Effects: ${tap}%`);
+      return { label: 'Audio Control', details: parts.length > 0 ? parts.join(', ') : 'Updated' };
+    }
+    case 'open_settings':
+      return { label: 'Settings Panel', details: `Opened (${(act.tab || 'General').toUpperCase()})` };
+    case 'close_settings':
+      return { label: 'Settings Panel', details: 'Closed' };
+    case 'open_search':
+      return { label: 'Celestial Search', details: act.query ? `Query: "${act.query}"` : 'Opened' };
+    case 'batch': {
+      const count = Array.isArray(act.actions) ? act.actions.length : 1;
+      return { label: 'Batch Execution', details: `${count} Actions Dispatched` };
+    }
+    default:
+      return { label: 'Action', details: String(act.type) };
+  }
+}
+
 /**
  * Robustly extracts the top-level JSON substring starting at `{` following `ACTION_TRIGGER`.
- * Properly handles nested braces `{}` inside double quotes `"..."`, single quotes `'...'`,
- * or backtick template literals ```...```, plus escape sequences (`\`).
  */
 function extractJsonAfterActionTrigger(text: string, triggerIndex: number): { jsonStr: string; startIndex: number; endIndex: number } | null {
   const firstBrace = text.indexOf('{', triggerIndex);
@@ -45,7 +236,6 @@ function extractJsonAfterActionTrigger(text: string, triggerIndex: number): { js
     }
   }
 
-  // Fallback for truncated LLM responses (depth > 0)
   if (depth > 0) {
     return {
       jsonStr: text.substring(firstBrace),
@@ -58,8 +248,7 @@ function extractJsonAfterActionTrigger(text: string, triggerIndex: number): { js
 }
 
 /**
- * Converts raw unescaped newlines/tabs inside string literals ("...", '...')
- * into escaped sequences (\n, \r, \t) so JSON.parse or Function() won't throw SyntaxError.
+ * Converts raw unescaped newlines/tabs inside string literals
  */
 function sanitizeStringLiterals(str: string): string {
   let result = '';
@@ -103,18 +292,15 @@ function parseCandidateObject(rawStr: string): any {
   const trimmed = rawStr.trim();
   if (!trimmed) return null;
 
-  // Attempt 1: Standard JSON.parse
   try {
     return JSON.parse(trimmed);
   } catch {}
 
-  // Attempt 2: JSON.parse after sanitizing unescaped newlines/tabs in strings
   try {
     const sanitized = sanitizeStringLiterals(trimmed);
     return JSON.parse(sanitized);
   } catch {}
 
-  // Attempt 3: JavaScript Object Literal evaluation via Function constructor
   try {
     let jsExpr = trimmed
       .replace(/[\u201C\u201D\u201E]/g, '"')
@@ -127,24 +313,17 @@ function parseCandidateObject(rawStr: string): any {
       return evalResult;
     }
   } catch {
-    // Attempt 4: Regex-based field extraction for action attributes
     try {
       const typeMatch = /"(?:type)"\s*:\s*"([^"]+)"|'type'\s*:\s*'([^']+)'|type\s*:\s*"([^"]+)"/i.exec(trimmed);
       const type = typeMatch ? (typeMatch[1] || typeMatch[2] || typeMatch[3]) : null;
 
       if (type) {
         const obj: any = { type };
-        const effectMatch = /"effect"\s*:\s*"([^"]+)"|effect\s*:\s*"([^"]+)"/i.exec(trimmed);
-        if (effectMatch) obj.effect = effectMatch[1] || effectMatch[2];
+        const idMatch = /"id"\s*:\s*"([^"]+)"|id\s*:\s*"([^"]+)"/i.exec(trimmed);
+        if (idMatch) obj.id = idMatch[1] || idMatch[2];
 
-        const enabledMatch = /"enabled"\s*:\s*(true|false)|enabled\s*:\s*(true|false)/i.exec(trimmed);
-        if (enabledMatch) obj.enabled = (enabledMatch[1] || enabledMatch[2]) === 'true';
-
-        // Extract wgslCode if present in raw string
-        const wgslMatch = /"(?:wgslCode|wgsl|code|shader)"\s*:\s*"([\s\S]*)"\s*\}?$/i.exec(trimmed);
-        if (wgslMatch && wgslMatch[1]) {
-          obj.wgslCode = wgslMatch[1];
-        }
+        const valMatch = /"value"\s*:\s*([^,\}\s]+)|value\s*:\s*([^,\}\s]+)/i.exec(trimmed);
+        if (valMatch) obj.value = valMatch[1] || valMatch[2];
 
         return obj;
       }
@@ -152,40 +331,6 @@ function parseCandidateObject(rawStr: string): any {
   }
 
   return null;
-}
-
-/**
- * Searches full text for any WGSL / shader code blocks in markdown fences.
- */
-function extractWgslFromText(fullText: string): string {
-  // Pattern 1: Specified language code blocks (wgsl, shader, glsl, javascript, etc.) with WGSL indicators
-  const wgslKeywordsRegex = /```(?:wgsl|wgsl-shader|shader|glsl|javascript|wgslCode)?\s*([\s\S]*?(?:vec[234]f|textureSample|sceneTexture|params\.time|@fragment|@group|struct\s+\w+)[\s\S]*?)```/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = wgslKeywordsRegex.exec(fullText)) !== null) {
-    if (match[1] && match[1].trim().length > 10) {
-      return match[1].trim();
-    }
-  }
-
-  // Pattern 2: Generic code blocks with characteristic WGSL shader statements
-  const genericCodeBlockRegex = /```(?:wgsl|shader|glsl|hlsl|c|cpp|ts|js)?\s*([\s\S]*?)```/gi;
-  let blockMatch: RegExpExecArray | null;
-  while ((blockMatch = genericCodeBlockRegex.exec(fullText)) !== null) {
-    const candidate = blockMatch[1] || '';
-    if (
-      candidate.includes('vec2f') ||
-      candidate.includes('vec4f') ||
-      candidate.includes('textureSample') ||
-      candidate.includes('params.time') ||
-      candidate.includes('sceneTexture') ||
-      candidate.includes('@fragment')
-    ) {
-      return candidate.trim();
-    }
-  }
-
-  return '';
 }
 
 export function parseAIActionsAndCleanText(fullText: string): { cleanedText: string; actions: AIAction[] } {
@@ -198,7 +343,6 @@ export function parseAIActionsAndCleanText(fullText: string): { cleanedText: str
   const triggerRegex = /ACTION_?TRIGGER/gi;
   let match: RegExpExecArray | null;
 
-  // Keep track of ranges to strip out of text
   const textRangesToRemove: { start: number; end: number }[] = [];
 
   while ((match = triggerRegex.exec(fullText)) !== null) {
@@ -207,20 +351,19 @@ export function parseAIActionsAndCleanText(fullText: string): { cleanedText: str
 
     if (jsonExtraction) {
       const parsedObj = parseCandidateObject(jsonExtraction.jsonStr);
-      if (parsedObj && typeof parsedObj === 'object') {
-        actions.push(parsedObj);
+      const normalized = normalizeAction(parsedObj);
 
-        // Find range to remove (include optional leading/trailing backticks or markdown wrapper)
+      if (normalized) {
+        actions.push(normalized);
+
         let removeStart = triggerStart;
         let removeEnd = jsonExtraction.endIndex;
 
-        // Check if preceding text has ``` or ```json
         const before = fullText.substring(Math.max(0, triggerStart - 10), triggerStart);
         if (before.includes('```')) {
           removeStart = fullText.lastIndexOf('```', triggerStart);
         }
 
-        // Check if trailing text has closing ```
         const after = fullText.substring(removeEnd, Math.min(fullText.length, removeEnd + 10));
         if (after.startsWith('```')) {
           removeEnd += 3;
@@ -233,67 +376,29 @@ export function parseAIActionsAndCleanText(fullText: string): { cleanedText: str
 
   // Strip extracted ACTION_TRIGGER blocks from cleanedText
   if (textRangesToRemove.length > 0) {
-    // Sort ranges backwards to remove without messing up indices
     textRangesToRemove.sort((a, b) => b.start - a.start);
     for (const r of textRangesToRemove) {
       cleanedText = cleanedText.substring(0, r.start) + cleanedText.substring(r.end);
     }
   }
 
-  // Normalize actions and check if custom WGSL shader was requested
-  let hasCustomShaderAction = false;
-  actions.forEach(a => {
-    if (!a || typeof a !== 'object') return;
-    const t = (a.type || '').toLowerCase();
-    const name = (a.name || a.effect || '').toLowerCase();
+  // Fallback scanner: If no ACTION_TRIGGER was present, check if the LLM appended a JSON block with "type": ...
+  if (actions.length === 0) {
+    const jsonBlockRegex = /```(?:json)?\s*(\{\s*"type"\s*:[\s\S]*?\})\s*```|\{\s*"type"\s*:\s*"[^"]+"\s*,\s*[\s\S]*?\}/gi;
+    let jsonMatch: RegExpExecArray | null;
+    while ((jsonMatch = jsonBlockRegex.exec(cleanedText)) !== null) {
+      const candidateStr = jsonMatch[1] || jsonMatch[0];
+      const parsedObj = parseCandidateObject(candidateStr);
+      const normalized = normalizeAction(parsedObj);
 
-    if (
-      t === 'set_ai_effect' ||
-      t === 'customshader' ||
-      t === 'wgslshader' ||
-      (t === 'set_setting' && (name.includes('wgsl') || name.includes('shader')))
-    ) {
-      hasCustomShaderAction = true;
-
-      // Extract alias fields for WGSL code
-      if (!a.wgslCode) {
-        a.wgslCode = a.wgsl || a.code || a.shader || a.source || a.wgslSource;
-      }
-      if (!a.effect) {
-        a.effect = 'custom';
+      if (normalized) {
+        actions.push(normalized);
+        cleanedText = cleanedText.substring(0, jsonMatch.index) + cleanedText.substring(jsonMatch.index + jsonMatch[0].length);
+        break;
       }
     }
-  });
-
-  // Check if any shader action is missing its WGSL code, or if WGSL code block was present in text
-  const extractedWgsl = extractWgslFromText(fullText);
-
-  if (hasCustomShaderAction) {
-    actions.forEach(a => {
-      const t = (a.type || '').toLowerCase();
-      if (
-        (t === 'set_ai_effect' || t === 'customshader' || t === 'wgslshader') &&
-        (!a.wgslCode || typeof a.wgslCode !== 'string' || a.wgslCode.trim().length === 0)
-      ) {
-        if (extractedWgsl) {
-          a.wgslCode = extractedWgsl;
-        }
-      }
-    });
-  } else if (extractedWgsl) {
-    // If NO action trigger was parsed, but the LLM provided a WGSL code block in response,
-    // automatically generate the action triggers!
-    actions.push({
-      type: 'set_ai_effect',
-      effect: 'custom',
-      enabled: true,
-      wgslCode: extractedWgsl
-    });
-    actions.push({
-      type: 'open_settings',
-      tab: 'ai_effects'
-    });
   }
 
   return { cleanedText: cleanedText.trim(), actions };
 }
+
