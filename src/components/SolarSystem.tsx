@@ -4500,7 +4500,7 @@ useEffect(() => {
         category: 'Settings',
         title: 'Framerate Cap',
         subtitle: `Current cap: ${fpsCap} FPS`,
-        keywords: ['fps', 'cap', 'limit', '30', '60', '75', '90', '120', '144', '240', '360', 'hz', 'refresh'],
+        keywords: ['fps', 'cap', 'limit', '30', '60', '75', '90', '120', '144', '240', '360', '540', 'hz', 'refresh'],
         icon: <Gauge className="w-4 h-4 text-slate-400" />,
         badge: `${fpsCap} FPS`,
         badgeType: 'info',
