@@ -221,15 +221,22 @@ async function startServer() {
     let body: any = {};
     let isAnthropic = false;
 
-    const MANDATORY_FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
+    const isOverviewRequest = Boolean(systemInstruction && /concise stellar guide|static celestial overview/i.test(systemInstruction));
+
+    const FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
 1. ALWAYS RELY ON VERIFIED FACTS: You MUST strictly base your responses on verified real-world scientific data, published astrophysics literature, and real-time live web findings. Never guess, hallucinate, or state speculative assertions as established facts.
 2. MANDATORY INLINE CITATIONS: Whenever stating specific factual claims, numerical parameters, dates, or mission outcomes supported by retrieved search results, YOU MUST CITE THEM INLINE using bracketed numbers like [1], [2], etc., corresponding exactly to the source indices.
-3. EXPLICIT UNCERTAINTY: If web search findings or domain facts are insufficient to give a conclusive answer, state the uncertainty explicitly instead of fabricating an answer.
+3. EXPLICIT UNCERTAINTY: If web search findings or domain facts are insufficient to give a conclusive answer, state the uncertainty explicitly instead of fabricating an answer.`;
 
-[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION]
-- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads.
-- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing), ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
+    const SIMULATOR_CONTROL_PROMPT = `\n\n[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION - CHAT ONLY]
+- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads, but ONLY when responding in the Stellar Historian chat interface.
+- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing) IN CHAT, ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
 - DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.`;
+
+    const OVERVIEW_NO_ACTION_PROMPT = `\n\n[OVERVIEW MODE - NO SIMULATOR CONTROL]
+- This is a static celestial overview triggered by clicking a body on the canvas. You MUST NOT output ACTION_TRIGGER, you MUST NOT control the simulator, and you MUST NOT suggest actions. Only the Stellar Historian chat interface may use ACTION_TRIGGER.`;
+
+    const MANDATORY_FACTUALITY_PROMPT = FACTUALITY_PROMPT + (isOverviewRequest ? OVERVIEW_NO_ACTION_PROMPT : SIMULATOR_CONTROL_PROMPT);
 
     let ragContext = MANDATORY_FACTUALITY_PROMPT;
     if (searchSources.length > 0) {
@@ -390,15 +397,22 @@ Synthesize your response using these verified live search findings alongside cor
       throw new Error("No valid Gemini API key available.");
     }
 
-    const MANDATORY_FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
+    const isOverviewRequest = Boolean(systemInstruction && /concise stellar guide|static celestial overview/i.test(systemInstruction));
+
+    const FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
 1. ALWAYS RELY ON VERIFIED FACTS: You MUST strictly base your responses on verified real-world scientific data, published astrophysics literature, and real-time live web findings. Never guess, hallucinate, or state speculative assertions as established facts.
 2. MANDATORY INLINE CITATIONS: Whenever stating specific factual claims, numerical parameters, dates, or mission outcomes supported by retrieved search results, YOU MUST CITE THEM INLINE using bracketed numbers like [1], [2], etc., corresponding exactly to the source indices.
-3. EXPLICIT UNCERTAINTY: If web search findings or domain facts are insufficient to give a conclusive answer, state the uncertainty explicitly instead of fabricating an answer.
+3. EXPLICIT UNCERTAINTY: If web search findings or domain facts are insufficient to give a conclusive answer, state the uncertainty explicitly instead of fabricating an answer.`;
 
-[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION]
-- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads.
-- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing), ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
+    const SIMULATOR_CONTROL_PROMPT = `\n\n[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION - CHAT ONLY]
+- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads, but ONLY when responding in the Stellar Historian chat interface.
+- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing) IN CHAT, ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
 - DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.`;
+
+    const OVERVIEW_NO_ACTION_PROMPT = `\n\n[OVERVIEW MODE - NO SIMULATOR CONTROL]
+- This is a static celestial overview triggered by clicking a body on the canvas. You MUST NOT output ACTION_TRIGGER, you MUST NOT control the simulator, and you MUST NOT suggest actions. Only the Stellar Historian chat interface may use ACTION_TRIGGER.`;
+
+    const MANDATORY_FACTUALITY_PROMPT = FACTUALITY_PROMPT + (isOverviewRequest ? OVERVIEW_NO_ACTION_PROMPT : SIMULATOR_CONTROL_PROMPT);
 
     let ragContext = MANDATORY_FACTUALITY_PROMPT;
     if (searchSources.length > 0) {
@@ -496,7 +510,8 @@ Synthesize your response using these verified live search findings alongside cor
         text = await callGeminiProvider(apiKey, sysInst, prompt);
       }
 
-      text = text.replace(/[*#`]/g, '').trim();
+      // Defense in depth: overview must never leak ACTION_TRIGGER (chat only)
+      text = text.replace(/ACTION_TRIGGER\s*:?\s*\{[\s\S]*?\}/gi, '').replace(/```[\s\S]*?```/g, (m) => m.replace(/ACTION_TRIGGER[\s\S]*?}/gi, '')).replace(/[*#`]/g, '').trim();
       return res.json({ text, provider: usedProvider });
     } catch (error: any) {
       console.error(`${targetProvider} Error on server:`, error?.message || error);

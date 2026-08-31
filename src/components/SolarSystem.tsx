@@ -1244,7 +1244,7 @@ useEffect(() => {
       // Generate dynamic AI description
       try {
         const languageName = LANGUAGES.find(l => l.code === lang)?.name || 'English';
-        const systemInstruction = `You are a concise stellar guide. You provide extremely short (max 20 words) raw text descriptions in the requested language. Use proper grammar and punctuation. NEVER use formatting or emojis of any kind. No asterisks (*), no backticks (\`), NO emojis under any circumstances, NO exceptions.`;
+        const systemInstruction = `You are a concise stellar guide. You provide extremely short (max 20 words) raw text descriptions in the requested language. Use proper grammar and punctuation. NEVER use formatting or emojis of any kind. No asterisks (*), no backticks (\`), NO emojis under any circumstances, NO exceptions. CRITICAL: You are providing a static celestial overview triggered by clicking a body. Do NOT output ACTION_TRIGGER, do NOT control the simulator, do NOT suggest actions. Only the Stellar Historian chat interface may use ACTION_TRIGGER; this overview must never include it.`;
         const prompt = `Write a extremely concise 1-sentence description of the celestial body "${tName}" in ${languageName}. 
         Do not include its name in the sentence if possible. Just describe it. 
         STRICT REQUIREMENT: Use proper grammar, punctuation, and apostrophes (e.g. "Earth's").
@@ -1264,7 +1264,7 @@ useEffect(() => {
           if (response.ok) {
             const data = await response.json();
             if (data.text) {
-              fullText = data.text;
+              fullText = String(data.text).replace(/ACTION_TRIGGER\s*:?\s*\{[\s\S]*?\}/gi, '').trim();
               descriptionCacheRef.current[cacheKey] = fullText;
               descriptionIsAiCacheRef.current[cacheKey] = true;
               setAiDescription(fullText);
