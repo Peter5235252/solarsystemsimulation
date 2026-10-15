@@ -11,6 +11,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { parseAIActionsAndCleanText, getDispatchedActionInfo, AIAction } from '../utils/aiActionParser';
 import { CitationPill, formatCitationsInText, SearchSource } from './CitationPill';
+import CosmicDust from './CosmicDust';
 import { X, Send, Sparkles, User, Bot, Loader2, RefreshCcw, History, Maximize2, Trash2, Cpu, Check, Globe, ChevronDown, ChevronUp, ArrowUpRight, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
 interface Message {
@@ -44,7 +45,6 @@ interface GeminiSidePanelProps {
     showAsteroids: boolean;
     showConstellations: boolean;
     showSpacecraft: boolean;
-    perfMode: boolean;
     hdMode: boolean;
     tempUnit: 'C' | 'F' | 'K';
     lang: string;
@@ -56,6 +56,7 @@ interface GeminiSidePanelProps {
     enableChromatic?: boolean;
     enableLensFlare?: boolean;
     enableCosmicDust?: boolean;
+    enableUiCosmicSpecks?: boolean;
     enableVignette?: boolean;
     fpsCap?: number;
     wasdSpeed?: number;
@@ -166,7 +167,6 @@ export const GeminiSidePanel: React.FC<GeminiSidePanelProps> = ({
 - Selected Celestial Body ID: ${currentSettings.selectedPlanetId ? `"${currentSettings.selectedPlanetId}"` : 'None'}
 - Quality Preset: ${currentSettings.graphicsPreset ? currentSettings.graphicsPreset.toUpperCase() : 'HIGH'}
 - FSR / Res Scale: ${currentSettings.resScale !== undefined ? currentSettings.resScale : '1.0'}
-- Performance Mode: ${currentSettings.perfMode ? 'ENABLED' : 'DISABLED'}
 - Bloom: ${currentSettings.enableBloom !== false ? 'ENABLED' : 'DISABLED'}
 - Orbit lines: ${currentSettings.showOrbits ? 'YES' : 'NO'}
 - Celestial labels: ${currentSettings.showLabels ? 'YES' : 'NO'}
@@ -180,88 +180,25 @@ Communication Style: Friendly, curious, and concise (1-2 brief paragraphs max). 
 Identity & Factuality: Answer user questions directly. Only state your AI identity, non-human nature, or potential for hallucinations if the user explicitly asks about your identity or challenges your nature.
 ${currentStatusStr}
 
-CRITICAL SIMULATOR CONTROL & ACTION DISPATCH RULES:
-You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads, SUBJECT TO AN EXTREMELY STRICT USER-APPROVAL REQUIREMENT.
+NO SIMULATOR CONTROL OR ACTION TRIGGERS IN SIDE PANEL:
+- You are strictly a conversational research assistant in this side panel.
+- You DO NOT have control over the simulator in this interface and you are STRICTLY FORBIDDEN from outputting any ACTION_TRIGGER JSON payloads under any circumstances.
+- If the user asks you to control the simulation, focus on a planet, change camera, speed, settings, or perform actions, politely inform them that they can do so using the full "Stellar Historian" chat interface (the full screen AI Researcher chat), or by manually using the simulator controls.
+- Do NOT generate any JSON, ACTION_TRIGGER, or automation commands in your responses. Keep responses purely educational, textual, and descriptive.`;
 
-1. SIMULATOR CONTROL & INTERACTIVE APPROVAL UI INTEGRATION:
-- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads.
-- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g., focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing), ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
-- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.
-
-2. STRICT EXCLUSIVE ACTION TYPES RULE:
-YOU MUST ONLY USE THE 15 EXACT ACTION TYPES LISTED BELOW. YOU ARE STRICTLY FORBIDDEN FROM INVENTING OR HALLUCINATING NONEXISTENT ACTION TYPES (such as custom_shader, warp_speed, change_color, set_ai_effect, rotate, set_camera, etc.).
-
-3. FORMATTING RULE:
-When approved by the user, every action trigger MUST be formatted as: ACTION_TRIGGER:{"type":"ACTION_TYPE", ...} appended at the end of text.
-
-EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
-
-1. SELECT CELESTIAL BODY / CAMERA TARGET:
-   ACTION_TRIGGER:{"type":"select_planet","id":"BODY_ID"}
-   Valid IDs: "sun", "mercury", "venus", "earth", "moon", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "charon", "titan", "enceladus", "iss", "jwst", "hubble", "sagittarius_a".
-   Use null to reset camera lock: ACTION_TRIGGER:{"type":"select_planet","id":null}
-
-2. RESET CAMERA / OVERVIEW:
-   ACTION_TRIGGER:{"type":"reset_camera"}
-
-3. ZOOM CONTROL:
-   ACTION_TRIGGER:{"type":"set_zoom","value":"in"} or ACTION_TRIGGER:{"type":"set_zoom","value":"out"} or ACTION_TRIGGER:{"type":"set_zoom","value":1.5}
-
-4. SIMULATION SPEED:
-   ACTION_TRIGGER:{"type":"set_speed","value":0|0.5|1|2|5|10|20|50|100|1000}
-
-5. PAUSE SIMULATION:
-   ACTION_TRIGGER:{"type":"pause"}
-
-6. RESUME SIMULATION:
-   ACTION_TRIGGER:{"type":"resume"}
-
-7. TOGGLE PAUSE STATE:
-   ACTION_TRIGGER:{"type":"toggle_pause"}
-
-8. TIME TRAVEL & CELESTIAL EVENTS:
-   ACTION_TRIGGER:{"type":"time_travel","id":"EVENT_ID"}
-   Valid Event IDs: "apollo11" (1969 Moon Landing), "voyager1" (1977 Probe Launch), "halley1986" (1986 Comet Perihelion), "alignment2000" (2000 Grand Alignment), "jwst2021" (2021 JWST Deployment), "alignment2040" (2040 Conjunction).
-
-9. SIMULATOR SETTINGS & TOGGLES:
-   ACTION_TRIGGER:{"type":"set_setting","name":"SETTING_NAME","value":VALUE}
-   Valid Setting Names and Values:
-   - "showOrbits": true|false
-   - "showLabels": true|false
-   - "showAsteroids": true|false
-   - "showConstellations": true|false
-   - "showSpacecraft": true|false
-   - "perfMode": true|false
-   - "hdMode": true|false
-   - "tempUnit": "C"|"F"|"K"
-   - "resScale": 0.50|0.67|0.75|0.85|1.0
-   - "sharpenLevel": 0.0..1.0
-   - "graphicsPreset": "low"|"medium"|"high"|"ultra"
-   - "enableBloom": true|false
-   - "enableChromatic": true|false
-   - "enableLensFlare": true|false
-   - "enableCosmicDust": true|false
-   - "enableVignette": true|false
-   - "fpsCap": 60|75|90|120|144|240|360|540
-   - "wasdSpeed": 0.5..5.0
-
-10. APPLY GRAPHICS PRESET:
-    ACTION_TRIGGER:{"type":"apply_preset","preset":"low"|"medium"|"high"|"ultra"}
-
-11. AUDIO & SOUND CONTROL:
-    ACTION_TRIGGER:{"type":"set_audio","ambienceVolume":50,"tapVolume":80} or ACTION_TRIGGER:{"type":"set_audio","mute":true}
-
-12. OPEN SETTINGS MODAL:
-    ACTION_TRIGGER:{"type":"open_settings","tab":"graphics"|"audio"|"simulation"|"preferences"}
-
-13. CLOSE SETTINGS MODAL:
-    ACTION_TRIGGER:{"type":"close_settings"}
-
-14. CELESTIAL SEARCH MODAL:
-    ACTION_TRIGGER:{"type":"open_search","query":"QUERY","category":"Planets"|"Moons"|"Spacecraft"|"Constellations"|"Black Holes"}
-
-15. MULTI-ACTION BATCH:
-    ACTION_TRIGGER:{"type":"batch","actions":[{"type":"select_planet","id":"mars"},{"type":"set_speed","value":10}]}`;
+      if (!apiKey || !apiKey.trim()) {
+        const errorMsgId = Date.now().toString();
+        const errorMsg: Message = {
+          id: errorMsgId,
+          role: 'model',
+          text: `An API key is required for ${aiModelName || 'Gemini'} for security. Please open Settings (AI Assistance) and configure your API key.`,
+          timestamp: Date.now()
+        };
+        setMessages(prev => [...prev, errorMsg]);
+        setIsLoading(false);
+        setStreamingText('');
+        return;
+      }
 
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
@@ -269,7 +206,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
         body: JSON.stringify({ 
           messages: chatHistory.current,
           systemInstruction,
-          apiKey,
+          apiKey: apiKey.trim(),
           provider: aiModelName
         })
       });
@@ -286,7 +223,8 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
         if (data.sources) resSources = data.sources;
         if (data.searchQuery) resQuery = data.searchQuery;
       } else {
-        throw new Error('API response failed');
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.detail || errJson.error || 'API response failed');
       }
 
       const { cleanedText, actions: actionsToExecute } = parseAIActionsAndCleanText(fullText);
@@ -375,7 +313,8 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
           }
           className="!fixed top-4 right-4 bottom-4 w-80 sm:w-96 z-[60] dual-kawase-glass glass-specular border border-white/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden ui-layer pointer-events-auto select-none"
         >
-          <div className="flex flex-col w-full h-full min-h-0 relative z-10">
+          <div className="flex flex-col w-full h-full min-h-0 relative z-10 overflow-hidden rounded-2xl">
+          <CosmicDust enabled={currentSettings?.enableUiCosmicSpecks ?? true} />
           {/* Header */}
           <div className="flex items-center justify-between p-3.5 px-4 bg-slate-950/20 border-b border-white/10 shrink-0">
             <div className="flex items-center gap-2.5">

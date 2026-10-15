@@ -5,7 +5,6 @@
 
 import React, { useEffect } from 'react';
 import SolarSystem from './components/SolarSystem';
-import GlassPreloader from './components/GlassPreloader';
 
 export default function App() {
   useEffect(() => {
@@ -25,9 +24,6 @@ export default function App() {
   }, []);
 
   return (
-    <>
-      <GlassPreloader />
-      <SolarSystem />
-    </>
+    <SolarSystem />
   );
 }

@@ -195,8 +195,12 @@ function checkWebSearchTrigger(text: string): boolean {
     t.includes('@search') ||
     t.includes('@browse the web') ||
     t.includes('@browse') ||
+    t.includes('@ground the web') ||
+    t.includes('@ground search') ||
+    t.includes('@ground') ||
     t.startsWith('/search') ||
-    t.startsWith('/web')
+    t.startsWith('/web') ||
+    t.startsWith('/ground')
   );
 }
 
@@ -204,7 +208,7 @@ function checkWebSearchTrigger(text: string): boolean {
 function stripWebSearchMentions(text: string): string {
   if (!text) return text;
   return text
-    .replace(/@\s*(web\s*search|search\s*the\s*web|browse\s*the\s*web|web|search|browse):?/gi, '')
+    .replace(/@\s*(web\s*search|search\s*the\s*web|browse\s*the\s*web|ground\s*the\s*web|ground\s*search|web|search|browse|ground):?/gi, '')
     .trim();
 }
 
@@ -214,38 +218,90 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
+  // Helper to detect structural queries like "What can you do?"
+  const detectStructuralQuery = (promptOrMessages: any): boolean => {
+    if (!promptOrMessages) return false;
+    let text = "";
+    if (typeof promptOrMessages === 'string') {
+      text = promptOrMessages;
+    } else if (Array.isArray(promptOrMessages)) {
+      for (let i = promptOrMessages.length - 1; i >= 0; i--) {
+        const m = promptOrMessages[i];
+        if (m && (m.role === 'user' || m.role === 'user')) {
+          if (typeof m.content === 'string') {
+            text = m.content;
+          } else if (Array.isArray(m.parts)) {
+            text = m.parts.map((p: any) => p?.text || '').join('\n');
+          } else if (m.text) {
+            text = String(m.text);
+          }
+          break;
+        }
+      }
+    }
+    if (!text) return false;
+    const q = text.toLowerCase().trim();
+    return (
+      q.includes("what can you do") ||
+      q.includes("what you can do") ||
+      q.includes("what actions can you") ||
+      q.includes("what are your capabilities") ||
+      q.includes("what capabilities") ||
+      q.includes("list your capabilities") ||
+      q.includes("list actions") ||
+      q.includes("show actions") ||
+      q.includes("help") ||
+      q.includes("how do you work") ||
+      q.includes("what are the commands") ||
+      q.includes("available commands") ||
+      q.includes("what commands") ||
+      (q.includes("can you") && (q.includes("do") || q.includes("perform") || q.includes("control") || q.includes("change")))
+    );
+  };
+
   // Helper to run other providers (ChatGPT GPT-5.6, Claude 5, Mistral, Grok 4.6)
-  const callOtherProvider = async (provider: string, apiKey: string, systemInstruction: string, messages: any[], searchSources: UniversalSource[] = []) => {
+  const callOtherProvider = async (provider: string, apiKey: string, systemInstruction: string, messages: any[], searchSources: UniversalSource[] = [], isDescriptionRequest = false) => {
     let url = "";
     let headers: any = { "Content-Type": "application/json" };
     let body: any = {};
     let isAnthropic = false;
 
-    const isOverviewRequest = Boolean(systemInstruction && /concise stellar guide|static celestial overview/i.test(systemInstruction));
+    let ragContext = "";
+    if (!isDescriptionRequest) {
+      const isStructural = detectStructuralQuery(messages);
+      let simulatorPrompt = "";
+      if (isStructural) {
+        simulatorPrompt = `\n\n[STRICT EXTERNAL TOOL CALL & ACTION LOCK - READ-ONLY PLAIN TEXT ONLY]
+- YOU ARE COMPLETELY LOCKED AND STRICTLY FORBIDDEN from generating or outputting any ACTION_TRIGGER payload, JSON, or any machine-executable command block in your response.
+- DO NOT suggest, command, trigger, or initiate any action on the simulator.
+- Provide a friendly, comprehensive, plain text summary of your educational capabilities, detailing how you can assist the user as an astronomer, historical guide, and search grounded research assistant.
+- Your output must be purely informative, plain text, and completely conversational. NO JSON blocks, NO ACTION_TRIGGERs.`;
+      } else {
+        simulatorPrompt = `\n\n[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION]
+- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads.
+- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing), ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
+- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.`;
+      }
 
-    const FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
+      const MANDATORY_FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
 1. ALWAYS RELY ON VERIFIED FACTS: You MUST strictly base your responses on verified real-world scientific data, published astrophysics literature, and real-time live web findings. Never guess, hallucinate, or state speculative assertions as established facts.
 2. MANDATORY INLINE CITATIONS: Whenever stating specific factual claims, numerical parameters, dates, or mission outcomes supported by retrieved search results, YOU MUST CITE THEM INLINE using bracketed numbers like [1], [2], etc., corresponding exactly to the source indices.
-3. EXPLICIT UNCERTAINTY: If web search findings or domain facts are insufficient to give a conclusive answer, state the uncertainty explicitly instead of fabricating an answer.`;
+3. EXPLICIT UNCERTAINTY: If web search findings or domain facts are insufficient to give a conclusive answer, state the uncertainty explicitly instead of fabricating an answer. ${simulatorPrompt}`;
 
-    const SIMULATOR_CONTROL_PROMPT = `\n\n[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION - CHAT ONLY]
-- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads, but ONLY when responding in the Stellar Historian chat interface.
-- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing) IN CHAT, ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
-- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.`;
-
-    const OVERVIEW_NO_ACTION_PROMPT = `\n\n[OVERVIEW MODE - NO SIMULATOR CONTROL]
-- This is a static celestial overview triggered by clicking a body on the canvas. You MUST NOT output ACTION_TRIGGER, you MUST NOT control the simulator, and you MUST NOT suggest actions. Only the Stellar Historian chat interface may use ACTION_TRIGGER.`;
-
-    const MANDATORY_FACTUALITY_PROMPT = FACTUALITY_PROMPT + (isOverviewRequest ? OVERVIEW_NO_ACTION_PROMPT : SIMULATOR_CONTROL_PROMPT);
-
-    let ragContext = MANDATORY_FACTUALITY_PROMPT;
-    if (searchSources.length > 0) {
-      ragContext += `\n\n[REAL-TIME LIVE WEB RETRIEVAL CONTEXT]
+      ragContext = MANDATORY_FACTUALITY_PROMPT;
+      if (searchSources.length > 0) {
+        ragContext += `\n\n[REAL-TIME LIVE WEB RETRIEVAL CONTEXT]
 The user triggered Web Search. The following verified web sources were retrieved in real time:
 ${searchSources.map(s => `[${s.sourceIndex}] "${s.title}" (${s.domain})\nURL: ${s.url}\nExcerpt: ${s.snippet}`).join('\n\n')}
 
 INSTRUCTIONS:
 Synthesize your response using these verified live search findings alongside core physics/astronomy principles. Cite references inline using [1], [2], etc.`;
+      }
+    } else {
+      ragContext = `\n\n[STRICT SPECIFICATION - PURE CONCISE TEXT ONLY - TOOL AND ACTION LOCK]
+- YOU ARE STRICTLY FORBIDDEN from generating, suggesting, or outputting any ACTION_TRIGGER, JSON, tool commands, brackets, or bracketed numbers like [1], [2], etc.
+- Provide a single, clean, concise factual sentence in plain text.
+- Do NOT output any formatting, annotations, or metadata.`;
     }
 
     const NO_EMOJI_INSTRUCTION = "\n\nCRITICAL INSTRUCTION: You MUST strictly NOT use ANY emojis or emoticons in your response under any circumstances. Emojis are strictly prohibited.";
@@ -327,7 +383,7 @@ Synthesize your response using these verified live search findings alongside cor
         model: "mistral-small-latest",
         messages: [{ role: "system", content: validSystemPrompt }, ...standardMessages]
       };
-    } else if (provider === "Grok" || provider === "xAI") {
+    } else if (provider === "Grok" || provider === "SpaceXAI" || provider === "xAI") {
       url = "https://api.x.ai/v1/chat/completions";
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = {
@@ -351,7 +407,7 @@ Synthesize your response using these verified live search findings alongside cor
         } else if (provider === "Mistral") {
           body.model = "open-mistral-7b";
           res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-        } else if (provider === "Grok" || provider === "xAI") {
+        } else if (provider === "Grok" || provider === "SpaceXAI" || provider === "xAI") {
           body.model = "grok-beta";
           res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
         }
@@ -373,7 +429,7 @@ Synthesize your response using these verified live search findings alongside cor
 
   // AI Setup - Helper function to instantiate GoogleGenAI
   const getAiClient = (key?: string) => {
-    const apiKey = (key && key.trim().length > 0) ? key.trim() : (process.env.GEMINI_API_KEY || "");
+    const apiKey = (key && key.trim().length > 0) ? key.trim() : "";
     if (!apiKey) return null;
     return new GoogleGenAI({
       apiKey,
@@ -390,38 +446,50 @@ Synthesize your response using these verified live search findings alongside cor
     apiKey: string | undefined, 
     systemInstruction: string, 
     promptOrMessages: any,
-    searchSources: UniversalSource[] = []
+    searchSources: UniversalSource[] = [],
+    isDescriptionRequest = false
   ) => {
     let client = getAiClient(apiKey);
     if (!client) {
       throw new Error("No valid Gemini API key available.");
     }
 
-    const isOverviewRequest = Boolean(systemInstruction && /concise stellar guide|static celestial overview/i.test(systemInstruction));
+    const isStructural = detectStructuralQuery(promptOrMessages);
+    let ragContext = "";
+    if (!isDescriptionRequest) {
+      let simulatorPrompt = "";
+      if (isStructural) {
+        simulatorPrompt = `\n\n[STRICT EXTERNAL TOOL CALL & ACTION LOCK - READ-ONLY PLAIN TEXT ONLY]
+- YOU ARE COMPLETELY LOCKED AND STRICTLY FORBIDDEN from generating or outputting any ACTION_TRIGGER payload, JSON, or any machine-executable command block in your response.
+- DO NOT suggest, command, trigger, or initiate any action on the simulator.
+- Provide a friendly, comprehensive, plain text summary of your educational capabilities, detailing how you can assist the user as an astronomer, historical guide, and search grounded research assistant.
+- Your output must be purely informative, plain text, and completely conversational. NO JSON blocks, NO ACTION_TRIGGERs.`;
+      } else {
+        simulatorPrompt = `\n\n[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION]
+- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads.
+- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing), ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
+- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.`;
+      }
 
-    const FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
+      const MANDATORY_FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
 1. ALWAYS RELY ON VERIFIED FACTS: You MUST strictly base your responses on verified real-world scientific data, published astrophysics literature, and real-time live web findings. Never guess, hallucinate, or state speculative assertions as established facts.
 2. MANDATORY INLINE CITATIONS: Whenever stating specific factual claims, numerical parameters, dates, or mission outcomes supported by retrieved search results, YOU MUST CITE THEM INLINE using bracketed numbers like [1], [2], etc., corresponding exactly to the source indices.
-3. EXPLICIT UNCERTAINTY: If web search findings or domain facts are insufficient to give a conclusive answer, state the uncertainty explicitly instead of fabricating an answer.`;
+3. EXPLICIT UNCERTAINTY: If web search findings or domain facts are insufficient to give a conclusive answer, state the uncertainty explicitly instead of fabricating an answer. ${simulatorPrompt}`;
 
-    const SIMULATOR_CONTROL_PROMPT = `\n\n[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION - CHAT ONLY]
-- You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads, but ONLY when responding in the Stellar Historian chat interface.
-- Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing) IN CHAT, ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
-- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.`;
-
-    const OVERVIEW_NO_ACTION_PROMPT = `\n\n[OVERVIEW MODE - NO SIMULATOR CONTROL]
-- This is a static celestial overview triggered by clicking a body on the canvas. You MUST NOT output ACTION_TRIGGER, you MUST NOT control the simulator, and you MUST NOT suggest actions. Only the Stellar Historian chat interface may use ACTION_TRIGGER.`;
-
-    const MANDATORY_FACTUALITY_PROMPT = FACTUALITY_PROMPT + (isOverviewRequest ? OVERVIEW_NO_ACTION_PROMPT : SIMULATOR_CONTROL_PROMPT);
-
-    let ragContext = MANDATORY_FACTUALITY_PROMPT;
-    if (searchSources.length > 0) {
-      ragContext += `\n\n[REAL-TIME LIVE WEB RETRIEVAL CONTEXT]
+      ragContext = MANDATORY_FACTUALITY_PROMPT;
+      if (searchSources.length > 0) {
+        ragContext += `\n\n[REAL-TIME LIVE WEB RETRIEVAL CONTEXT]
 The user triggered Web Search. The following verified web sources were retrieved in real time:
 ${searchSources.map(s => `[${s.sourceIndex}] "${s.title}" (${s.domain})\nURL: ${s.url}\nExcerpt: ${s.snippet}`).join('\n\n')}
 
 INSTRUCTIONS:
 Synthesize your response using these verified live search findings alongside core physics/astronomy principles. Cite references inline using [1], [2], etc.`;
+      }
+    } else {
+      ragContext = `\n\n[STRICT SPECIFICATION - PURE CONCISE TEXT ONLY - TOOL AND ACTION LOCK]
+- YOU ARE STRICTLY FORBIDDEN from generating, suggesting, or outputting any ACTION_TRIGGER, JSON, tool commands, brackets, or bracketed numbers like [1], [2], etc.
+- Provide a single, clean, concise factual sentence in plain text.
+- Do NOT output any formatting, annotations, or metadata.`;
     }
 
     const NO_EMOJI_INSTRUCTION = "\n\nCRITICAL INSTRUCTION: You MUST strictly NOT use ANY emojis or emoticons in your response under any circumstances. Emojis are strictly prohibited.";
@@ -452,30 +520,17 @@ Synthesize your response using these verified live search findings alongside cor
 
     try {
       const response = await client.models.generateContent({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.8-flash",
         contents,
         config: { 
           systemInstruction: finalSystemInstruction,
+          responseMimeType: (isDescriptionRequest || isStructural) ? "text/plain" : undefined,
           // If web search is active and no pre-scraped sources exist, enable native Google Search
-          tools: searchSources.length === 0 && checkWebSearchTrigger(JSON.stringify(promptOrMessages)) ? [{ googleSearch: {} }] : undefined
+          tools: (!isDescriptionRequest && !isStructural && searchSources.length === 0 && checkWebSearchTrigger(JSON.stringify(promptOrMessages))) ? [{ googleSearch: {} }] : undefined
         }
       });
       return response.text || "";
     } catch (err) {
-      if (apiKey && process.env.GEMINI_API_KEY && apiKey.trim() !== process.env.GEMINI_API_KEY.trim()) {
-        const fallbackClient = getAiClient(undefined);
-        if (fallbackClient) {
-          console.warn("Custom key failed on Gemini, falling back to server default GEMINI_API_KEY");
-          const response = await fallbackClient.models.generateContent({
-            model: "gemini-3.7-flash",
-            contents,
-            config: { 
-              systemInstruction: finalSystemInstruction
-            }
-          });
-          return response.text || "";
-        }
-      }
       throw err;
     }
   };
@@ -484,34 +539,33 @@ Synthesize your response using these verified live search findings alongside cor
   app.post("/api/ai/description", async (req, res) => {
     const { prompt, systemInstruction, apiKey, provider, aiModelName } = req.body;
     const targetProvider = provider || aiModelName || "Gemini";
+    const isGemini = !targetProvider || targetProvider.toLowerCase().includes("gemini");
     
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
+    }
+
+    // Enforce API key for all models for security
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+      return res.status(401).json({ 
+        error: `API key required for ${targetProvider}`, 
+        detail: `An API key is required for ${targetProvider} for security. Please configure your key in Settings.` 
+      });
     }
 
     const sysInst = systemInstruction || "You are a concise stellar guide.";
 
     try {
       let text = "";
-      let usedProvider = targetProvider;
+      const usedProvider = isGemini ? "Gemini" : targetProvider;
 
-      if (targetProvider !== "Gemini" && apiKey && apiKey.trim().length > 0) {
-        try {
-          text = await callOtherProvider(targetProvider, apiKey.trim(), sysInst, [{ role: 'user', content: prompt }]);
-        } catch (providerError: any) {
-          console.warn(`Provider ${targetProvider} failed (${providerError?.message}), attempting Gemini fallback...`);
-          text = await callGeminiProvider(undefined, sysInst, prompt);
-          usedProvider = `${targetProvider} (Gemini fallback)`;
-        }
-      } else if (targetProvider !== "Gemini" && (!apiKey || apiKey.trim().length === 0)) {
-        text = await callGeminiProvider(undefined, sysInst, prompt);
-        usedProvider = `${targetProvider} (Gemini engine)`;
+      if (!isGemini) {
+        text = await callOtherProvider(targetProvider, apiKey.trim(), sysInst, [{ role: 'user', content: prompt }], [], true);
       } else {
-        text = await callGeminiProvider(apiKey, sysInst, prompt);
+        text = await callGeminiProvider(apiKey.trim(), sysInst, prompt, [], true);
       }
 
-      // Defense in depth: overview must never leak ACTION_TRIGGER (chat only)
-      text = text.replace(/ACTION_TRIGGER\s*:?\s*\{[\s\S]*?\}/gi, '').replace(/```[\s\S]*?```/g, (m) => m.replace(/ACTION_TRIGGER[\s\S]*?}/gi, '')).replace(/[*#`]/g, '').trim();
+      text = text.replace(/[*#`]/g, '').trim();
       return res.json({ text, provider: usedProvider });
     } catch (error: any) {
       console.error(`${targetProvider} Error on server:`, error?.message || error);
@@ -523,7 +577,16 @@ Synthesize your response using these verified live search findings alongside cor
   app.post("/api/ai/chat", async (req, res) => {
     const { messages, systemInstruction, apiKey, provider, aiModelName, webSearch } = req.body;
     const targetProvider = provider || aiModelName || "Gemini";
+    const isGemini = !targetProvider || targetProvider.toLowerCase().includes("gemini");
     
+    // Enforce API key for all models for security
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+      return res.status(401).json({ 
+        error: `API key required for ${targetProvider}`, 
+        detail: `An API key is required for ${targetProvider} for security. Please configure your key in Settings.` 
+      });
+    }
+
     const sysInst = systemInstruction || "You are the Stellar Historian.";
 
     // Determine if web search is triggered explicitly via prop or mention in message
@@ -555,21 +618,12 @@ Synthesize your response using these verified live search findings alongside cor
 
     try {
       let text = "";
-      let usedProvider = targetProvider;
+      const usedProvider = isGemini ? "Gemini" : targetProvider;
 
-      if (targetProvider !== "Gemini" && apiKey && apiKey.trim().length > 0) {
-        try {
-          text = await callOtherProvider(targetProvider, apiKey.trim(), sysInst, messages || [], sources);
-        } catch (providerError: any) {
-          console.warn(`Chat provider ${targetProvider} failed (${providerError?.message}), attempting Gemini fallback...`);
-          text = await callGeminiProvider(undefined, sysInst, messages || [], sources);
-          usedProvider = `${targetProvider} (Gemini fallback)`;
-        }
-      } else if (targetProvider !== "Gemini" && (!apiKey || apiKey.trim().length === 0)) {
-        text = await callGeminiProvider(undefined, sysInst, messages || [], sources);
-        usedProvider = `${targetProvider} (Gemini engine)`;
+      if (!isGemini) {
+        text = await callOtherProvider(targetProvider, apiKey.trim(), sysInst, messages || [], sources);
       } else {
-        text = await callGeminiProvider(apiKey, sysInst, messages || [], sources);
+        text = await callGeminiProvider(apiKey.trim(), sysInst, messages || [], sources);
       }
 
       text = text.trim();
@@ -593,15 +647,22 @@ Synthesize your response using these verified live search findings alongside cor
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    // Enforce API key for security
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+      res.write(`data: ${JSON.stringify({ error: "Gemini API key is required for security. Please configure your key in Settings." })}\n\n`);
+      res.end();
+      return;
+    }
+
     try {
       const client = getAiClient(apiKey);
-      if (!client) throw new Error("No valid Gemini API key available.");
+      if (!client) throw new Error("Gemini API key is required for security.");
 
       const NO_EMOJI_INSTRUCTION = "\n\nCRITICAL INSTRUCTION: You MUST strictly NOT use ANY emojis or emoticons in your response under any circumstances. Emojis are strictly prohibited.";
       const finalSystemInstruction = (systemInstruction || "You are the Stellar Historian.") + NO_EMOJI_INSTRUCTION;
 
       const responseStream = await client.models.generateContentStream({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.8-flash",
         contents: prompt,
         config: { systemInstruction: finalSystemInstruction }
       });

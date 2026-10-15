@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, Check } from 'lucide-react';
+import { uiSound, UiTapVariant } from '../utils/uiSoundSynthesis';
 
 export interface DropdownOption {
   value: string | number;
@@ -10,7 +11,7 @@ export interface DropdownOption {
   disabled?: boolean;
 }
 
-interface CustomDropdownProps {
+export interface CustomDropdownProps {
   value: string | number;
   options: DropdownOption[];
   onChange: (value: any) => void;
@@ -22,7 +23,8 @@ interface CustomDropdownProps {
   icon?: React.ReactNode;
   uiAnimations?: boolean;
   uiAnimSpeed?: number;
-  playTapSound?: () => void;
+  playTapSound?: (variant?: UiTapVariant) => void;
+  volumePercent?: number;
 }
 
 export const CustomDropdown: React.FC<CustomDropdownProps> = ({
@@ -38,14 +40,41 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
   uiAnimations = true,
   uiAnimSpeed = 1,
   playTapSound,
+  volumePercent,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+  const [isOpeningUp, setIsOpeningUp] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
 
   const selectedOption = options.find((opt) => String(opt.value) === String(value));
+
+  const triggerSound = useCallback(
+    (variant: UiTapVariant = 'standard') => {
+      if (playTapSound) {
+        playTapSound(variant);
+      } else {
+        const effectiveVolume =
+          typeof volumePercent === 'number'
+            ? volumePercent
+            : (() => {
+                try {
+                  const saved = localStorage.getItem('tapVolume');
+                  if (saved !== null) {
+                    const parsed = parseFloat(saved);
+                    if (!Number.isNaN(parsed)) return parsed;
+                  }
+                } catch {}
+                return 80;
+              })();
+        uiSound.playTap(effectiveVolume, variant);
+      }
+    },
+    [playTapSound, volumePercent]
+  );
 
   const updatePosition = () => {
     if (buttonRef.current) {
@@ -55,6 +84,7 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
       const spaceBelow = viewportHeight - rect.bottom - 12;
       const spaceAbove = rect.top - 12;
       const shouldOpenUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+      setIsOpeningUp(shouldOpenUp);
       setMenuStyle({
         position: 'fixed',
         left: rect.left,
@@ -70,6 +100,9 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
   useEffect(() => {
     if (isOpen) {
       updatePosition();
+      const idx = options.findIndex((opt) => String(opt.value) === String(value));
+      setHighlightedIndex(idx >= 0 ? idx : 0);
+
       const handleResize = () => updatePosition();
       window.addEventListener('resize', handleResize);
       window.addEventListener('scroll', handleResize, true);
@@ -77,8 +110,10 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
         window.removeEventListener('resize', handleResize);
         window.removeEventListener('scroll', handleResize, true);
       };
+    } else {
+      setHighlightedIndex(-1);
     }
-  }, [isOpen]);
+  }, [isOpen, options, value]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -101,7 +136,32 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        triggerSound('toggle-off');
         setIsOpen(false);
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setHighlightedIndex((prev) => {
+          const next = options.length > 0 ? (prev + 1) % options.length : -1;
+          triggerSound('subtle');
+          return next;
+        });
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setHighlightedIndex((prev) => {
+          const next = options.length > 0 ? (prev - 1 + options.length) % options.length : -1;
+          triggerSound('subtle');
+          return next;
+        });
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < options.length) {
+          const opt = options[highlightedIndex];
+          if (!opt.disabled) {
+            triggerSound('snap');
+            onChange(opt.value);
+            setIsOpen(false);
+          }
+        }
       }
     };
 
@@ -114,7 +174,7 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen]);
+  }, [isOpen, options, highlightedIndex, onChange, triggerSound]);
 
   return (
     <div className={`relative inline-block w-full text-left ${className}`} ref={containerRef}>
@@ -122,8 +182,12 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
         ref={buttonRef}
         type="button"
         onClick={() => {
-          playTapSound?.();
-          setIsOpen(!isOpen);
+          const nextState = !isOpen;
+          if (nextState) {
+            updatePosition();
+          }
+          triggerSound(nextState ? 'toggle-on' : 'toggle-off');
+          setIsOpen(nextState);
         }}
         className={`w-full dual-kawase-glass-subtle hover:bg-slate-800/90 text-slate-200 text-xs rounded-xl px-3.5 py-2.5 flex items-center justify-between outline-none focus:ring-2 focus:ring-slate-500/50 cursor-pointer shadow-sm transition-all duration-200 active:scale-[0.98] active:opacity-80 active:duration-75 ${
           fontMono ? 'font-mono' : 'font-medium'
@@ -142,29 +206,55 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
         </motion.div>
       </button>
 
-      {isOpen &&
-        createPortal(
-          <AnimatePresence>
+      {createPortal(
+        <AnimatePresence>
+          {isOpen && (
             <motion.div
               ref={menuRef}
-              initial={{ opacity: 0, y: -6, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.96 }}
-              transition={uiAnimations ? { duration: 0.18 / uiAnimSpeed, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }}
-              style={menuStyle}
+              key="custom-dropdown-panel"
+              initial={{
+                opacity: 0,
+                scaleY: 0,
+                y: isOpeningUp ? 8 : -8,
+              }}
+              animate={{
+                opacity: 1,
+                scaleY: 1,
+                y: 0,
+              }}
+              exit={{
+                opacity: 0,
+                scaleY: 0,
+                y: isOpeningUp ? 8 : -8,
+              }}
+              transition={
+                uiAnimations
+                  ? {
+                      duration: 0.22 / uiAnimSpeed,
+                      ease: [0.16, 1, 0.3, 1],
+                      opacity: { duration: 0.16 / uiAnimSpeed },
+                    }
+                  : { duration: 0 }
+              }
+              style={{
+                ...menuStyle,
+                transformOrigin: isOpeningUp ? 'bottom center' : 'top center',
+              }}
               className={`dual-kawase-glass glass-specular shadow-2xl rounded-xl p-1.5 overflow-y-auto divide-y divide-slate-800/40 custom-scrollbar ${menuClassName}`}
             >
-              {options.map((option) => {
+              {options.map((option, idx) => {
                 const isSelected = String(option.value) === String(value);
+                const isHighlighted = highlightedIndex === idx;
 
                 return (
                   <button
                     key={String(option.value)}
                     type="button"
                     disabled={option.disabled}
+                    onMouseEnter={() => setHighlightedIndex(idx)}
                     onClick={() => {
                       if (option.disabled) return;
-                      playTapSound?.();
+                      triggerSound('snap');
                       onChange(option.value);
                       setIsOpen(false);
                     }}
@@ -173,6 +263,8 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
                     } ${
                       isSelected
                         ? 'bg-slate-700/60 text-slate-200 font-semibold border border-slate-600/50'
+                        : isHighlighted
+                        ? 'bg-slate-800/80 text-white'
                         : 'hover:bg-slate-800/80 hover:text-white'
                     } ${option.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${
                       fontMono ? 'font-mono' : ''
@@ -184,9 +276,10 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
                 );
               })}
             </motion.div>
-          </AnimatePresence>,
-          document.body
-        )}
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };

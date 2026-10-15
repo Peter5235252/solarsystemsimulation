@@ -96,7 +96,6 @@ export function normalizeAction(rawAction: any): AIAction | null {
       else if (n === 'showasteroids' || n === 'asteroids') cleanAction.name = 'showAsteroids';
       else if (n === 'showconstellations' || n === 'constellations') cleanAction.name = 'showConstellations';
       else if (n === 'showspacecraft' || n === 'spacecraft') cleanAction.name = 'showSpacecraft';
-      else if (n === 'perfmode' || n === 'performance') cleanAction.name = 'perfMode';
       else if (n === 'hdmode' || n === 'hd') cleanAction.name = 'hdMode';
       else if (n === 'tempunit' || n === 'temperature') cleanAction.name = 'tempUnit';
       else if (n === 'resscale' || n === 'fsr') cleanAction.name = 'resScale';

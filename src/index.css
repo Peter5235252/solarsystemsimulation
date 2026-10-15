@@ -23,116 +23,103 @@ input, textarea, [contenteditable="true"] {
   user-select: text;
 }
 
-/* Dual Kawase Frosted Glass System - High Transparency See-Through Space Glass */
+/* Disable native browser password reveal and clear buttons (Edge / Chromium) to prevent duplicate eye icons */
+input::-ms-reveal,
+input::-ms-clear,
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+input::-webkit-credentials-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  right: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Dual Kawase Frosted Glass System - Cross-Browser Compatible (Firefox / Chromium / WebKit) */
 .dual-kawase-glass {
   position: relative;
   overflow: hidden;
-  background: rgba(10, 16, 36, 0.55);
-  -webkit-backdrop-filter: blur(24px) saturate(220%) !important;
-  backdrop-filter: blur(24px) saturate(220%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 16, 36, 0.72);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: 
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.25),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.22),
     inset 0 -1px 1px 0 rgba(0, 0, 0, 0.65),
     0 24px 60px -12px rgba(0, 0, 0, 0.85);
-  
-  -webkit-transform: translate3d(0, 0, 0);
-  transform: translate3d(0, 0, 0);
-  isolation: isolate;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-perspective: 1000px;
-  perspective: 1000px;
-  will-change: transform;
-  contain: layout style;
 }
 
 .dual-kawase-glass-subtle {
   position: relative;
   overflow: hidden;
-  background: rgba(12, 18, 40, 0.45);
-  -webkit-backdrop-filter: blur(16px) saturate(200%) !important;
-  backdrop-filter: blur(16px) saturate(200%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.20);
+  background: rgba(12, 18, 40, 0.58);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.20),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
     0 12px 36px -6px rgba(0, 0, 0, 0.70);
-  
-  -webkit-transform: translate3d(0, 0, 0);
-  transform: translate3d(0, 0, 0);
-  isolation: isolate;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-perspective: 1000px;
-  perspective: 1000px;
-  will-change: transform;
-  contain: layout style;
 }
 
 .dual-kawase-glass-card {
   position: relative;
   overflow: hidden;
-  background: rgba(15, 20, 44, 0.35);
-  -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
-  backdrop-filter: blur(12px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 20, 44, 0.48);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow: 
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.16),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.14),
     0 8px 24px -4px rgba(0, 0, 0, 0.60);
-  
-  -webkit-transform: translate3d(0, 0, 0);
-  transform: translate3d(0, 0, 0);
-  isolation: isolate;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-perspective: 1000px;
-  perspective: 1000px;
-  will-change: transform;
-  contain: layout style;
 }
 
-/* Universal GPU Hardware Acceleration for GUI Overlays, Modals, Panels, and Controls */
-.panel,
-.ui-layer,
-[class*="glass"] {
-  -webkit-transform: translate3d(0, 0, 0);
-  transform: translate3d(0, 0, 0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-perspective: 1000px;
-  perspective: 1000px;
-  will-change: transform;
-}
-
-/* Hardware Accelerate Interactive GUI Controls (Buttons, Inputs, Selects, Dropdowns, Custom Controls) */
-button,
-input,
-select,
-textarea,
-[role="button"],
-.cursor-pointer,
-.dropdown-option {
-  -webkit-transform: translateZ(0);
-  transform: translateZ(0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  will-change: transform, opacity;
+/* Prevent recursive nested backdrop-filter allocation cascades in Firefox WebRender */
+.dual-kawase-glass .dual-kawase-glass,
+.dual-kawase-glass .dual-kawase-glass-subtle,
+.dual-kawase-glass .dual-kawase-glass-card,
+.dual-kawase-glass-subtle .dual-kawase-glass-subtle,
+.dual-kawase-glass-subtle .dual-kawase-glass-card {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 /* High-Performance Mode CSS Overrides */
 .perf-mode .dual-kawase-glass {
-  -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
-  backdrop-filter: blur(16px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
 }
 
 .perf-mode .dual-kawase-glass-subtle {
-  -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
-  backdrop-filter: blur(12px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .perf-mode .dual-kawase-glass-card {
-  -webkit-backdrop-filter: blur(10px) saturate(130%) !important;
-  backdrop-filter: blur(10px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* Fallback for environments where backdrop-filter is disabled or unsupported */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .dual-kawase-glass {
+    background: rgba(10, 16, 36, 0.94) !important;
+  }
+  .dual-kawase-glass-subtle {
+    background: rgba(12, 18, 40, 0.90) !important;
+  }
+  .dual-kawase-glass-card {
+    background: rgba(15, 20, 44, 0.85) !important;
+  }
 }
 
 /* Glass specular top highlight rim */

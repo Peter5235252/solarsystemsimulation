@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Send, Sparkles, User, Bot, Loader2, RefreshCcw, 
@@ -17,7 +17,8 @@ import {
   List, ListTodo, Quote, Code, Tag, Trash2, CheckCircle2,
   Undo2, Redo2, Calculator, Eye, Globe, FastForward, Zap,
   ZoomIn, ZoomOut, Monitor, Activity, Sun, Moon, Telescope,
-  Satellite, Layers, Gauge, Thermometer, Mic, MicOff
+  Satellite, Layers, Gauge, Thermometer, Mic, MicOff,
+  Paperclip, Camera, FileUp, FileCode
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -25,6 +26,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { CustomDropdown } from './CustomDropdown';
 import { CitationPill, formatCitationsInText } from './CitationPill';
+import CosmicDust from './CosmicDust';
 import { parseAIActionsAndCleanText, getDispatchedActionInfo, AIAction } from '../utils/aiActionParser';
 import { 
   CELESTIAL_DOSSIERS, 
@@ -34,6 +36,28 @@ import {
   SpaceMission, 
   CosmicPhenomenon 
 } from '../data/stellarArchives';
+
+export interface AttachedFile {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  dataUrl?: string;
+  textContent?: string;
+}
+
+export interface DirectiveItem {
+  id: string;
+  trigger: string;
+  aliases?: string[];
+  label: string;
+  category: 'Web' | 'Focus' | 'Events' | 'Speed' | 'Graphics' | 'Layers';
+  desc: string;
+  icon: React.ReactNode;
+  badge?: string;
+  isWebSearch?: boolean;
+  action?: any;
+}
 
 interface SearchSource {
   title: string;
@@ -55,6 +79,7 @@ interface Message {
   sources?: SearchSource[];
   isWebSearchGrounded?: boolean;
   searchQuery?: string;
+  attachments?: AttachedFile[];
 }
 
 interface SavedNote {
@@ -69,11 +94,12 @@ interface SavedNote {
 interface AIResearcherProps {
   isOpen: boolean;
   onClose: () => void;
-  playTapSound: () => void;
+  playTapSound: (variant?: any) => void;
   currentPlanet?: string | null;
   uiAnimations?: boolean;
   uiAnimSpeed?: number;
   apiKey?: string;
+  geminiApiKey?: string;
   initialQuestion?: string | null;
   onExecuteAction?: (action: any) => void;
   aiModelName?: string;
@@ -84,7 +110,6 @@ interface AIResearcherProps {
     showAsteroids: boolean;
     showConstellations: boolean;
     showSpacecraft: boolean;
-    perfMode: boolean;
     hdMode: boolean;
     tempUnit: 'C' | 'F' | 'K';
     lang: string;
@@ -96,6 +121,7 @@ interface AIResearcherProps {
     enableChromatic?: boolean;
     enableLensFlare?: boolean;
     enableCosmicDust?: boolean;
+    enableUiCosmicSpecks?: boolean;
     enableVignette?: boolean;
     fpsCap?: number;
     wasdSpeed?: number;
@@ -112,6 +138,7 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
   uiAnimations = true, 
   uiAnimSpeed = 1, 
   apiKey = "", 
+  geminiApiKey = "",
   initialQuestion = null,
   onExecuteAction,
   currentSettings,
@@ -187,6 +214,7 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const processedQuestionRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatHistory = useRef<{ role: string; content: string }[]>([]);
   const syncTimeoutRef = useRef<any>(null);
@@ -435,24 +463,19 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
     }
   }, [isOpen]);
 
-  // Action Menu State for '+' Button in Message Bar
-  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
-  const [actionSearchQuery, setActionSearchQuery] = useState('');
-  const [actionCategoryFilter, setActionCategoryFilter] = useState<'All' | 'Focus' | 'Events' | 'Speed' | 'Graphics' | 'Layers'>('All');
-  const actionMenuRef = useRef<HTMLDivElement>(null);
+  // Attach File Menu State for Attachment Button in Message Bar
+  const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<AttachedFile[]>([]);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Web Search / Universal RAG State
+  // Web Search & Unified Directives State
   const [expandedSourcesMsgIds, setExpandedSourcesMsgIds] = useState<Set<string>>(() => new Set());
   const [isMentionMenuOpen, setIsMentionMenuOpen] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+  const [directiveCategoryFilter, setDirectiveCategoryFilter] = useState<'All' | 'Web' | 'Focus' | 'Events' | 'Speed' | 'Graphics' | 'Layers'>('All');
   const mentionMenuRef = useRef<HTMLDivElement>(null);
-
-  const WEB_SEARCH_OPTIONS = useMemo(() => [
-    { trigger: '@Web', label: 'Web Search', desc: 'Live web search & inline citations' },
-    { trigger: '@Search', label: 'Search Web', desc: 'Query real-time astrophysics sources' },
-    { trigger: '@Browse', label: 'Browse Web', desc: 'Ground query in verified internet data' }
-  ], []);
 
   const checkIsWebSearchMention = (text: string): boolean => {
     if (!text) return false;
@@ -461,16 +484,39 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
       lower.includes('@web search') ||
       lower.includes('@search the web') ||
       lower.includes('@browse the web') ||
+      lower.includes('@ground the web') ||
+      lower.includes('@ground search') ||
       lower.includes('@web') ||
       lower.includes('@search') ||
       lower.includes('@browse') ||
+      lower.includes('@ground') ||
       lower.startsWith('/search') ||
-      lower.startsWith('/web')
+      lower.startsWith('/web') ||
+      lower.startsWith('/ground')
     );
   };
 
   const isWebSearchActiveInInput = useMemo(() => {
     return checkIsWebSearchMention(input);
+  }, [input]);
+
+  // Regex pattern to capture triggers with "@" for web browsing
+  const WEB_TRIGGER_PATTERN = /(?<=\s|^)(@(?:web(?:\s+search)?|search(?:\s+the\s+web)?|browse(?:\s+the\s+web)?|ground(?:\s+the\s+web)?|ground(?:\s+search)?|web|search|browse|ground)\b)/gi;
+
+  const isWebTriggerText = (token: string): boolean => {
+    return token.startsWith('@') && /^(?:@(?:web(?:\s+search)?|search(?:\s+the\s+web)?|browse(?:\s+the\s+web)?|ground(?:\s+the\s+web)?|ground(?:\s+search)?|web|search|browse|ground))$/i.test(token);
+  };
+
+  const syncBackdropScroll = () => {
+    if (inputRef.current && backdropRef.current) {
+      backdropRef.current.scrollLeft = inputRef.current.scrollLeft;
+    }
+  };
+
+  useLayoutEffect(() => {
+    syncBackdropScroll();
+    const rafId = requestAnimationFrame(syncBackdropScroll);
+    return () => cancelAnimationFrame(rafId);
   }, [input]);
 
   const toggleExpandSources = (msgId: string) => {
@@ -482,29 +528,28 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
     });
   };
 
-  const filteredMentionOptions = useMemo(() => {
-    if (!mentionFilter) return WEB_SEARCH_OPTIONS;
-    const q = mentionFilter.toLowerCase().replace(/^@/, '');
-    return WEB_SEARCH_OPTIONS.filter(opt => 
-      opt.trigger.toLowerCase().includes(q) || 
-      opt.label.toLowerCase().includes(q) ||
-      opt.desc.toLowerCase().includes(q)
-    );
-  }, [WEB_SEARCH_OPTIONS, mentionFilter]);
+  const getPreferredTrigger = (filterText: string): string => {
+    const q = filterText.toLowerCase().trim();
+    if (q.startsWith('g')) return '@Ground';
+    if (q.startsWith('s')) return '@Search';
+    if (q.startsWith('b')) return '@Browse';
+    return '@Web';
+  };
 
-  const handleSelectMention = (trigger: string) => {
+  const handleSelectMention = (trigger?: string) => {
     playTapSound();
+    const actualTrigger = trigger || getPreferredTrigger(mentionFilter);
     setInput(prev => {
       const match = prev.match(/(?:^|\s)@([a-zA-Z0-9_\s]*)$/);
       if (match) {
         const prefix = prev.slice(0, prev.length - match[0].length);
         const leadingSpace = match[0].startsWith(' ') ? ' ' : '';
-        return `${prefix}${leadingSpace}${trigger} `;
+        return `${prefix}${leadingSpace}${actualTrigger} `;
       }
       if (checkIsWebSearchMention(prev)) {
         return prev;
       }
-      return `${trigger} ${prev.trimStart()}`;
+      return `${actualTrigger} ${prev.trimStart()}`;
     });
     setIsMentionMenuOpen(false);
     inputRef.current?.focus();
@@ -518,9 +563,12 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
         .replace(/@web\s+search/gi, '')
         .replace(/@search\s+the\s+web/gi, '')
         .replace(/@browse\s+the\s+web/gi, '')
+        .replace(/@ground\s+the\s+web/gi, '')
+        .replace(/@ground\s+search/gi, '')
         .replace(/@web/gi, '')
         .replace(/@search/gi, '')
         .replace(/@browse/gi, '')
+        .replace(/@ground/gi, '')
         .trim();
       setInput(cleaned);
     } else {
@@ -529,19 +577,23 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
     inputRef.current?.focus();
   };
 
-  // Close Action Menu on click outside or Escape
+  // Close Attach Menu on click outside or Escape
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target as Node)) {
-        setIsActionMenuOpen(false);
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setIsAttachMenuOpen(false);
+      }
+      if (mentionMenuRef.current && !mentionMenuRef.current.contains(e.target as Node)) {
+        setIsMentionMenuOpen(false);
       }
     };
     const handleEscKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isActionMenuOpen) {
-        setIsActionMenuOpen(false);
+      if (e.key === 'Escape') {
+        if (isAttachMenuOpen) setIsAttachMenuOpen(false);
+        if (isMentionMenuOpen) setIsMentionMenuOpen(false);
       }
     };
-    if (isActionMenuOpen) {
+    if (isAttachMenuOpen || isMentionMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       window.addEventListener('keydown', handleEscKey);
     }
@@ -549,79 +601,98 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('keydown', handleEscKey);
     };
-  }, [isActionMenuOpen]);
+  }, [isAttachMenuOpen, isMentionMenuOpen]);
 
-  // Comprehensive list of force actions the LLM can dispatch
-  const forceActionItems = useMemo(() => [
-    // Celestial Focus & Tracking
-    { id: 'focus_sun', label: 'Focus Sun', category: 'Focus' as const, desc: 'Target Solar Core & Corona', icon: <Sun className="w-3.5 h-3.5 text-slate-300" />, badge: 'STAR', action: { type: 'select_planet', id: 'sun' } },
-    { id: 'focus_earth', label: 'Focus Earth', category: 'Focus' as const, desc: 'Target Earth & Atmosphere', icon: <Globe className="w-3.5 h-3.5 text-slate-300" />, badge: 'PLANET', action: { type: 'select_planet', id: 'earth' } },
-    { id: 'focus_moon', label: 'Focus Moon', category: 'Focus' as const, desc: 'Target Lunar Orbit & Surface', icon: <Moon className="w-3.5 h-3.5 text-slate-300" />, badge: 'MOON', action: { type: 'select_planet', id: 'moon' } },
-    { id: 'focus_mars', label: 'Focus Mars', category: 'Focus' as const, desc: 'Target Martian Surface & Dust', icon: <Flame className="w-3.5 h-3.5 text-slate-300" />, badge: 'PLANET', action: { type: 'select_planet', id: 'mars' } },
-    { id: 'focus_jupiter', label: 'Focus Jupiter', category: 'Focus' as const, desc: 'Target Gas Giant & Great Red Spot', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'GIANT', action: { type: 'select_planet', id: 'jupiter' } },
-    { id: 'focus_saturn', label: 'Focus Saturn', category: 'Focus' as const, desc: 'Target Saturn & Ring System', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'RINGS', action: { type: 'select_planet', id: 'saturn' } },
-    { id: 'focus_titan', label: 'Focus Titan', category: 'Focus' as const, desc: 'Target Titan Methane Seas', icon: <Moon className="w-3.5 h-3.5 text-slate-300" />, badge: 'MOON', action: { type: 'select_planet', id: 'titan' } },
-    { id: 'focus_europa', label: 'Focus Europa', category: 'Focus' as const, desc: 'Target Jovian Ice Crust & Subsurface Ocean', icon: <Moon className="w-3.5 h-3.5 text-slate-300" />, badge: 'MOON', action: { type: 'select_planet', id: 'europa' } },
-    { id: 'focus_uranus', label: 'Focus Uranus', category: 'Focus' as const, desc: 'Target Tilted Ice Giant', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'ICE', action: { type: 'select_planet', id: 'uranus' } },
-    { id: 'focus_neptune', label: 'Focus Neptune', category: 'Focus' as const, desc: 'Target Outermost Supersonic Winds', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'ICE', action: { type: 'select_planet', id: 'neptune' } },
-    { id: 'focus_pluto', label: 'Focus Pluto', category: 'Focus' as const, desc: 'Target Kuiper Belt Dwarf Planet', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'DWARF', action: { type: 'select_planet', id: 'pluto' } },
-    { id: 'focus_sagittarius', label: 'Focus Sagittarius A*', category: 'Focus' as const, desc: 'Target Supermassive Black Hole', icon: <Atom className="w-3.5 h-3.5 text-slate-300" />, badge: 'BLACK HOLE', action: { type: 'select_planet', id: 'sagittarius_a' } },
-    { id: 'focus_jwst', label: 'Focus JWST', category: 'Focus' as const, desc: 'Target Webb Infrared Observatory at L2', icon: <Telescope className="w-3.5 h-3.5 text-slate-300" />, badge: 'OPTICS', action: { type: 'select_planet', id: 'jwst' } },
-    { id: 'focus_iss', label: 'Focus ISS', category: 'Focus' as const, desc: 'Target International Space Station', icon: <Satellite className="w-3.5 h-3.5 text-slate-300" />, badge: 'STATION', action: { type: 'select_planet', id: 'iss' } },
-    { id: 'focus_voyager1', label: 'Focus Voyager 1', category: 'Focus' as const, desc: 'Target Interstellar Deep Space Probe', icon: <Rocket className="w-3.5 h-3.5 text-slate-300" />, badge: 'PROBE', action: { type: 'select_planet', id: 'voyager1' } },
-    { id: 'reset_camera', label: 'Solar Overview', category: 'Focus' as const, desc: 'Reset Camera to Solar System View', icon: <Compass className="w-3.5 h-3.5 text-slate-300" />, badge: 'RESET', action: { type: 'reset_camera' } },
+  // Reset keyboard selection on filter changes
+  useEffect(() => {
+    setMentionSelectedIndex(0);
+  }, [mentionFilter, directiveCategoryFilter]);
 
-    // Historic Time Warp Events
-    { id: 'warp_apollo11', label: 'Apollo 11 Landing (1969)', category: 'Events' as const, desc: 'July 20, 1969 Neil Armstrong Lunar Landing', icon: <Rocket className="w-3.5 h-3.5 text-slate-300" />, badge: 'HISTORIC', action: { type: 'time_travel', id: 'apollo11' } },
-    { id: 'warp_voyager1', label: 'Voyager 1 Launch (1977)', category: 'Events' as const, desc: 'Sept 5, 1977 Deep Space Mission Launch', icon: <Compass className="w-3.5 h-3.5 text-slate-300" />, badge: 'MISSION', action: { type: 'time_travel', id: 'voyager1' } },
-    { id: 'warp_halley', label: "Halley's Comet (1986)", category: 'Events' as const, desc: 'Feb 9, 1986 Perihelion Pass & Bright Coma', icon: <Flame className="w-3.5 h-3.5 text-slate-300" />, badge: 'COMET', action: { type: 'time_travel', id: 'halley1986' } },
-    { id: 'warp_alignment2000', label: 'Planetary Alignment (2000)', category: 'Events' as const, desc: 'May 5, 2000 6-Planet Orbital Alignment', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'ALIGNMENT', action: { type: 'time_travel', id: 'alignment2000' } },
-    { id: 'warp_jwst2021', label: 'JWST Launch (2021)', category: 'Events' as const, desc: 'Dec 25, 2021 Webb Telescope Launch to L2', icon: <Telescope className="w-3.5 h-3.5 text-slate-300" />, badge: 'TELESCOPE', action: { type: 'time_travel', id: 'jwst2021' } },
-    { id: 'warp_alignment2040', label: 'Grand Conjunction (2040)', category: 'Events' as const, desc: 'Sept 8, 2040 5-Planet Twilight Alignment', icon: <Sparkles className="w-3.5 h-3.5 text-slate-300" />, badge: 'FUTURE', action: { type: 'time_travel', id: 'alignment2040' } },
+  // Unified Directives: Web Search Directive + Simulator Quick Action Directives
+  const unifiedDirectives = useMemo<DirectiveItem[]>(() => [
+    // Web Search Directive (No redundant LIVE GROUNDING tag)
+    {
+      id: 'dir_web_search',
+      trigger: '@Web',
+      aliases: ['@Web', '@Search', '@Browse', '@Ground'],
+      label: 'Web search',
+      category: 'Web',
+      desc: 'Ground inquiries in real-time astrophysics web data and verified scientific citations.',
+      icon: <Globe className="w-3.5 h-3.5 text-slate-300" />,
+      badge: 'RAG',
+      isWebSearch: true
+    },
 
-    // Simulation Speed & Velocity
-    { id: 'speed_pause', label: 'Pause Simulation', category: 'Speed' as const, desc: 'Freeze Orbital Progression (0x)', icon: <Pause className="w-3.5 h-3.5 text-slate-300" />, badge: '0X', action: { type: 'pause' } },
-    { id: 'speed_1x', label: 'Real-Time Orbit (1x)', category: 'Speed' as const, desc: 'Standard Astronomical Real-Time Velocity', icon: <Play className="w-3.5 h-3.5 text-slate-300" />, badge: '1X', action: { type: 'set_speed', value: 1 } },
-    { id: 'speed_5x', label: 'Fast-Forward (5x)', category: 'Speed' as const, desc: 'Accelerate Orbital Time Flow by 5x', icon: <FastForward className="w-3.5 h-3.5 text-slate-300" />, badge: '5X', action: { type: 'set_speed', value: 5 } },
-    { id: 'speed_20x', label: 'Hyper-Speed (20x)', category: 'Speed' as const, desc: 'Observe Rapid Planetary Transits', icon: <Zap className="w-3.5 h-3.5 text-slate-300" />, badge: '20X', action: { type: 'set_speed', value: 20 } },
-    { id: 'speed_100x', label: 'Maximum Warp (100x)', category: 'Speed' as const, desc: 'Maximum Orbital Velocity Multiplier', icon: <Gauge className="w-3.5 h-3.5 text-slate-300" />, badge: '100X', action: { type: 'set_speed', value: 100 } },
+    // Celestial Focus & Tracking Directives
+    { id: 'dir_sun', trigger: '@Sun', label: 'Focus Sun', category: 'Focus', desc: 'Target Solar Core & Corona', icon: <Sun className="w-3.5 h-3.5 text-slate-300" />, badge: 'STAR', action: { type: 'select_planet', id: 'sun' } },
+    { id: 'dir_earth', trigger: '@Earth', label: 'Focus Earth', category: 'Focus', desc: 'Target Earth & Atmosphere', icon: <Globe className="w-3.5 h-3.5 text-slate-300" />, badge: 'PLANET', action: { type: 'select_planet', id: 'earth' } },
+    { id: 'dir_moon', trigger: '@Moon', label: 'Focus Moon', category: 'Focus', desc: 'Target Lunar Orbit & Surface', icon: <Moon className="w-3.5 h-3.5 text-slate-300" />, badge: 'MOON', action: { type: 'select_planet', id: 'moon' } },
+    { id: 'dir_mars', trigger: '@Mars', label: 'Focus Mars', category: 'Focus', desc: 'Target Martian Surface & Dust', icon: <Flame className="w-3.5 h-3.5 text-slate-300" />, badge: 'PLANET', action: { type: 'select_planet', id: 'mars' } },
+    { id: 'dir_jupiter', trigger: '@Jupiter', label: 'Focus Jupiter', category: 'Focus', desc: 'Target Gas Giant & Great Red Spot', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'GIANT', action: { type: 'select_planet', id: 'jupiter' } },
+    { id: 'dir_saturn', trigger: '@Saturn', label: 'Focus Saturn', category: 'Focus', desc: 'Target Saturn & Ring System', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'RINGS', action: { type: 'select_planet', id: 'saturn' } },
+    { id: 'dir_titan', trigger: '@Titan', label: 'Focus Titan', category: 'Focus', desc: 'Target Titan Methane Seas', icon: <Moon className="w-3.5 h-3.5 text-slate-300" />, badge: 'MOON', action: { type: 'select_planet', id: 'titan' } },
+    { id: 'dir_europa', trigger: '@Europa', label: 'Focus Europa', category: 'Focus', desc: 'Target Jovian Ice Crust & Subsurface Ocean', icon: <Moon className="w-3.5 h-3.5 text-slate-300" />, badge: 'MOON', action: { type: 'select_planet', id: 'europa' } },
+    { id: 'dir_uranus', trigger: '@Uranus', label: 'Focus Uranus', category: 'Focus', desc: 'Target Tilted Ice Giant', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'ICE', action: { type: 'select_planet', id: 'uranus' } },
+    { id: 'dir_neptune', trigger: '@Neptune', label: 'Focus Neptune', category: 'Focus', desc: 'Target Outermost Supersonic Winds', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'ICE', action: { type: 'select_planet', id: 'neptune' } },
+    { id: 'dir_pluto', trigger: '@Pluto', label: 'Focus Pluto', category: 'Focus', desc: 'Target Kuiper Belt Dwarf Planet', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'DWARF', action: { type: 'select_planet', id: 'pluto' } },
+    { id: 'dir_sagittarius', trigger: '@Sagittarius', label: 'Focus Sagittarius A*', category: 'Focus', desc: 'Target Supermassive Black Hole', icon: <Atom className="w-3.5 h-3.5 text-slate-300" />, badge: 'BLACK HOLE', action: { type: 'select_planet', id: 'sagittarius_a' } },
+    { id: 'dir_jwst', trigger: '@JWST', label: 'Focus JWST', category: 'Focus', desc: 'Target Webb Infrared Observatory at L2', icon: <Telescope className="w-3.5 h-3.5 text-slate-300" />, badge: 'OPTICS', action: { type: 'select_planet', id: 'jwst' } },
+    { id: 'dir_iss', trigger: '@ISS', label: 'Focus ISS', category: 'Focus', desc: 'Target International Space Station', icon: <Satellite className="w-3.5 h-3.5 text-slate-300" />, badge: 'STATION', action: { type: 'select_planet', id: 'iss' } },
+    { id: 'dir_voyager1', trigger: '@Voyager', label: 'Focus Voyager 1', category: 'Focus', desc: 'Target Interstellar Deep Space Probe', icon: <Rocket className="w-3.5 h-3.5 text-slate-300" />, badge: 'PROBE', action: { type: 'select_planet', id: 'voyager1' } },
+    { id: 'dir_reset', trigger: '@Reset', label: 'Solar Overview', category: 'Focus', desc: 'Reset Camera to Solar System View', icon: <Compass className="w-3.5 h-3.5 text-slate-300" />, badge: 'RESET', action: { type: 'reset_camera' } },
+    { id: 'dir_zoomin', trigger: '@ZoomIn', label: 'Zoom In (+60%)', category: 'Focus', desc: 'Increase Camera Magnification', icon: <ZoomIn className="w-3.5 h-3.5 text-slate-300" />, badge: 'ZOOM', action: { type: 'set_zoom', value: 'in' } },
+    { id: 'dir_zoomout', trigger: '@ZoomOut', label: 'Zoom Out (-40%)', category: 'Focus', desc: 'Decrease Camera Magnification', icon: <ZoomOut className="w-3.5 h-3.5 text-slate-300" />, badge: 'ZOOM', action: { type: 'set_zoom', value: 'out' } },
 
-    // Graphics Presets & FSR Upscaling
-    { id: 'preset_ultra', label: 'Ultra Quality Preset', category: 'Graphics' as const, desc: 'Full HDR Bloom, Cosmic Dust, and MSAA', icon: <Sparkles className="w-3.5 h-3.5 text-slate-300" />, badge: 'PRESET', action: { type: 'apply_preset', preset: 'ultra' } },
-    { id: 'preset_high', label: 'High Fidelity Preset', category: 'Graphics' as const, desc: 'Balanced High Visual Quality & FPS', icon: <Activity className="w-3.5 h-3.5 text-slate-300" />, badge: 'PRESET', action: { type: 'apply_preset', preset: 'high' } },
-    { id: 'preset_low', label: 'Low / Battery Saver', category: 'Graphics' as const, desc: 'Optimized Render Pipeline for Efficiency', icon: <Cpu className="w-3.5 h-3.5 text-slate-300" />, badge: 'PRESET', action: { type: 'apply_preset', preset: 'low' } },
-    { id: 'fsr_100', label: 'FSR Native (100%)', category: 'Graphics' as const, desc: 'Native 1:1 Render Resolution Scale', icon: <Monitor className="w-3.5 h-3.5 text-slate-300" />, badge: 'FSR', action: { type: 'set_setting', name: 'resScale', value: 1.0 } },
-    { id: 'fsr_75', label: 'FSR Quality (75%)', category: 'Graphics' as const, desc: '0.75x Resolution Scale with CAS Sharpening', icon: <Monitor className="w-3.5 h-3.5 text-slate-300" />, badge: 'FSR', action: { type: 'set_setting', name: 'resScale', value: 0.75 } },
-    { id: 'fsr_50', label: 'FSR Performance (50%)', category: 'Graphics' as const, desc: '0.50x Resolution Scale for Max Performance', icon: <Monitor className="w-3.5 h-3.5 text-slate-300" />, badge: 'FSR', action: { type: 'set_setting', name: 'resScale', value: 0.50 } },
+    // Historic Time Warp Directives
+    { id: 'dir_apollo11', trigger: '@Apollo11', label: 'Apollo 11 Landing (1969)', category: 'Events', desc: 'July 20, 1969 Neil Armstrong Lunar Landing', icon: <Rocket className="w-3.5 h-3.5 text-slate-300" />, badge: '1969', action: { type: 'time_travel', id: 'apollo11' } },
+    { id: 'dir_voyager1977', trigger: '@Voyager1977', label: 'Voyager 1 Launch (1977)', category: 'Events', desc: 'Sept 5, 1977 Deep Space Mission Launch', icon: <Compass className="w-3.5 h-3.5 text-slate-300" />, badge: '1977', action: { type: 'time_travel', id: 'voyager1' } },
+    { id: 'dir_halley', trigger: '@Halley', label: "Halley's Comet (1986)", category: 'Events', desc: 'Feb 9, 1986 Perihelion Pass & Bright Coma', icon: <Flame className="w-3.5 h-3.5 text-slate-300" />, badge: '1986', action: { type: 'time_travel', id: 'halley1986' } },
+    { id: 'dir_align2000', trigger: '@Alignment2000', label: 'Planetary Alignment (2000)', category: 'Events', desc: 'May 5, 2000 6-Planet Orbital Alignment', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: '2000', action: { type: 'time_travel', id: 'alignment2000' } },
+    { id: 'dir_jwst2021', trigger: '@JWST2021', label: 'JWST Launch (2021)', category: 'Events', desc: 'Dec 25, 2021 Webb Telescope Launch to L2', icon: <Telescope className="w-3.5 h-3.5 text-slate-300" />, badge: '2021', action: { type: 'time_travel', id: 'jwst2021' } },
+    { id: 'dir_align2040', trigger: '@Alignment2040', label: 'Grand Conjunction (2040)', category: 'Events', desc: 'Sept 8, 2040 5-Planet Twilight Alignment', icon: <Sparkles className="w-3.5 h-3.5 text-slate-300" />, badge: '2040', action: { type: 'time_travel', id: 'alignment2040' } },
+
+    // Simulation Speed & Velocity Directives
+    { id: 'dir_pause', trigger: '@Pause', label: 'Pause Simulation', category: 'Speed', desc: 'Freeze Orbital Progression (0x)', icon: <Pause className="w-3.5 h-3.5 text-slate-300" />, badge: '0X', action: { type: 'pause' } },
+    { id: 'dir_speed1', trigger: '@1x', label: 'Real-Time Orbit (1x)', category: 'Speed', desc: 'Standard Astronomical Real-Time Velocity', icon: <Play className="w-3.5 h-3.5 text-slate-300" />, badge: '1X', action: { type: 'set_speed', value: 1 } },
+    { id: 'dir_speed5', trigger: '@5x', label: 'Fast-Forward (5x)', category: 'Speed', desc: 'Accelerate Orbital Time Flow by 5x', icon: <FastForward className="w-3.5 h-3.5 text-slate-300" />, badge: '5X', action: { type: 'set_speed', value: 5 } },
+    { id: 'dir_speed20', trigger: '@20x', label: 'Hyper-Speed (20x)', category: 'Speed', desc: 'Observe Rapid Planetary Transits', icon: <Zap className="w-3.5 h-3.5 text-slate-300" />, badge: '20X', action: { type: 'set_speed', value: 20 } },
+    { id: 'dir_speed100', trigger: '@100x', label: 'Maximum Warp (100x)', category: 'Speed', desc: 'Maximum Orbital Velocity Multiplier', icon: <Gauge className="w-3.5 h-3.5 text-slate-300" />, badge: '100X', action: { type: 'set_speed', value: 100 } },
+
+    // Graphics Presets & Upscaling Directives
+    { id: 'dir_ultra', trigger: '@Ultra', label: 'Ultra Quality Preset', category: 'Graphics', desc: 'Full HDR Bloom, Cosmic Dust, and MSAA', icon: <Sparkles className="w-3.5 h-3.5 text-slate-300" />, badge: 'PRESET', action: { type: 'apply_preset', preset: 'ultra' } },
+    { id: 'dir_high', trigger: '@High', label: 'High Fidelity Preset', category: 'Graphics', desc: 'Balanced High Visual Quality & FPS', icon: <Activity className="w-3.5 h-3.5 text-slate-300" />, badge: 'PRESET', action: { type: 'apply_preset', preset: 'high' } },
+    { id: 'dir_low', trigger: '@Low', label: 'Low / Battery Saver', category: 'Graphics', desc: 'Optimized Render Pipeline for Efficiency', icon: <Cpu className="w-3.5 h-3.5 text-slate-300" />, badge: 'PRESET', action: { type: 'apply_preset', preset: 'low' } },
+    { id: 'dir_fsr75', trigger: '@FSR', label: 'FSR Quality (75%)', category: 'Graphics', desc: '0.75x Resolution Scale with CAS Sharpening', icon: <Monitor className="w-3.5 h-3.5 text-slate-300" />, badge: 'FSR', action: { type: 'set_setting', name: 'resScale', value: 0.75 } },
 
     // Display Layers & HUD Toggles
-    { id: 'layer_orbits', label: 'Toggle Orbits', category: 'Layers' as const, desc: 'Keplerian Orbital Trajectory Trails', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showOrbits', value: !(currentSettings?.showOrbits) } },
-    { id: 'layer_labels', label: 'Toggle Labels', category: 'Layers' as const, desc: 'Celestial Body Nameplates & HUD Tags', icon: <Tag className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showLabels', value: !(currentSettings?.showLabels) } },
-    { id: 'layer_asteroids', label: 'Toggle Asteroid Belt', category: 'Layers' as const, desc: 'Main Asteroid Belt Particles & Comets', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showAsteroids', value: !(currentSettings?.showAsteroids) } },
-    { id: 'layer_constellations', label: 'Toggle Constellations', category: 'Layers' as const, desc: 'Stellar Constellation Lines & Zodiac Grid', icon: <Sparkles className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showConstellations', value: !(currentSettings?.showConstellations) } },
-    { id: 'layer_spacecraft', label: 'Toggle Spacecraft', category: 'Layers' as const, desc: 'Active Deep Space Exploration Probes', icon: <Satellite className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showSpacecraft', value: !(currentSettings?.showSpacecraft) } },
-    { id: 'layer_bloom', label: 'Toggle Bloom Glow', category: 'Layers' as const, desc: 'HDR Emissive Lighting Glow on Stars', icon: <Flame className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'enableBloom', value: !(currentSettings?.enableBloom) } },
-
-    // Zoom & Audio Controls
-    { id: 'zoom_in', label: 'Zoom In (+60%)', category: 'Focus' as const, desc: 'Increase Camera Magnification', icon: <ZoomIn className="w-3.5 h-3.5 text-slate-300" />, badge: 'ZOOM', action: { type: 'set_zoom', value: 'in' } },
-    { id: 'zoom_out', label: 'Zoom Out (-40%)', category: 'Focus' as const, desc: 'Decrease Camera Magnification', icon: <ZoomOut className="w-3.5 h-3.5 text-slate-300" />, badge: 'ZOOM', action: { type: 'set_zoom', value: 'out' } },
-    { id: 'audio_mute', label: 'Mute Ambience', category: 'Layers' as const, desc: 'Silence Ambient Cosmic Soundscape', icon: <VolumeX className="w-3.5 h-3.5 text-slate-300" />, badge: 'AUDIO', action: { type: 'set_audio', mute: true } },
-    { id: 'audio_full', label: 'Max Ambience (100%)', category: 'Layers' as const, desc: 'Set Cosmic Ambience Volume to 100%', icon: <Volume2 className="w-3.5 h-3.5 text-slate-300" />, badge: 'AUDIO', action: { type: 'set_audio', ambienceVolume: 100 } },
-
-    // Temperature Unit Toggles
-    { id: 'temp_c', label: 'Celsius (°C)', category: 'Layers' as const, desc: 'Display Temperatures in Celsius', icon: <Thermometer className="w-3.5 h-3.5 text-slate-300" />, badge: '°C', action: { type: 'set_setting', name: 'tempUnit', value: 'C' } },
-    { id: 'temp_f', label: 'Fahrenheit (°F)', category: 'Layers' as const, desc: 'Display Temperatures in Fahrenheit', icon: <Thermometer className="w-3.5 h-3.5 text-slate-300" />, badge: '°F', action: { type: 'set_setting', name: 'tempUnit', value: 'F' } },
-    { id: 'temp_k', label: 'Kelvin (K)', category: 'Layers' as const, desc: 'Display Temperatures in Kelvin', icon: <Thermometer className="w-3.5 h-3.5 text-slate-300" />, badge: 'K', action: { type: 'set_setting', name: 'tempUnit', value: 'K' } }
+    { id: 'dir_orbits', trigger: '@Orbits', label: 'Toggle Orbits', category: 'Layers', desc: 'Keplerian Orbital Trajectory Trails', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showOrbits', value: !(currentSettings?.showOrbits) } },
+    { id: 'dir_labels', trigger: '@Labels', label: 'Toggle Labels', category: 'Layers', desc: 'Celestial Body Nameplates & HUD Tags', icon: <Tag className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showLabels', value: !(currentSettings?.showLabels) } },
+    { id: 'dir_asteroids', trigger: '@Asteroids', label: 'Toggle Asteroid Belt', category: 'Layers', desc: 'Main Asteroid Belt Particles & Comets', icon: <Orbit className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showAsteroids', value: !(currentSettings?.showAsteroids) } },
+    { id: 'dir_constellations', trigger: '@Constellations', label: 'Toggle Constellations', category: 'Layers', desc: 'Stellar Constellation Lines & Zodiac Grid', icon: <Sparkles className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showConstellations', value: !(currentSettings?.showConstellations) } },
+    { id: 'dir_spacecraft', trigger: '@Spacecraft', label: 'Toggle Spacecraft', category: 'Layers', desc: 'Active Deep Space Exploration Probes', icon: <Satellite className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'showSpacecraft', value: !(currentSettings?.showSpacecraft) } },
+    { id: 'dir_bloom', trigger: '@Bloom', label: 'Toggle Bloom Glow', category: 'Layers', desc: 'HDR Emissive Lighting Glow on Stars', icon: <Flame className="w-3.5 h-3.5 text-slate-300" />, badge: 'LAYER', action: { type: 'set_setting', name: 'enableBloom', value: !(currentSettings?.enableBloom) } },
+    { id: 'dir_mute', trigger: '@Mute', label: 'Mute Ambience', category: 'Layers', desc: 'Silence Ambient Cosmic Soundscape', icon: <VolumeX className="w-3.5 h-3.5 text-slate-300" />, badge: 'AUDIO', action: { type: 'set_audio', mute: true } },
+    { id: 'dir_celsius', trigger: '@Celsius', label: 'Celsius (°C)', category: 'Layers', desc: 'Display Temperatures in Celsius', icon: <Thermometer className="w-3.5 h-3.5 text-slate-300" />, badge: '°C', action: { type: 'set_setting', name: 'tempUnit', value: 'C' } },
+    { id: 'dir_fahrenheit', trigger: '@Fahrenheit', label: 'Fahrenheit (°F)', category: 'Layers', desc: 'Display Temperatures in Fahrenheit', icon: <Thermometer className="w-3.5 h-3.5 text-slate-300" />, badge: '°F', action: { type: 'set_setting', name: 'tempUnit', value: 'F' } },
+    { id: 'dir_kelvin', trigger: '@Kelvin', label: 'Kelvin (K)', category: 'Layers', desc: 'Display Temperatures in Kelvin', icon: <Thermometer className="w-3.5 h-3.5 text-slate-300" />, badge: 'K', action: { type: 'set_setting', name: 'tempUnit', value: 'K' } }
   ], [currentSettings]);
 
-  const filteredForceActions = useMemo(() => {
-    return forceActionItems.filter(item => {
-      const matchCat = actionCategoryFilter === 'All' || item.category === actionCategoryFilter;
-      const q = actionSearchQuery.toLowerCase().trim();
-      const matchQuery = !q || item.label.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q) || item.badge?.toLowerCase().includes(q) || item.category.toLowerCase().includes(q);
-      return matchCat && matchQuery;
+  const filteredDirectives = useMemo<DirectiveItem[]>(() => {
+    const q = mentionFilter.toLowerCase().trim();
+    return unifiedDirectives.filter(item => {
+      const matchCat = directiveCategoryFilter === 'All' || item.category === directiveCategoryFilter;
+      if (!q) return matchCat;
+
+      const matchTrigger = item.trigger.toLowerCase().includes(q) || (item.trigger.startsWith('@') && item.trigger.slice(1).toLowerCase().includes(q));
+      const matchLabel = item.label.toLowerCase().includes(q);
+      const matchDesc = item.desc.toLowerCase().includes(q);
+      const matchBadge = item.badge?.toLowerCase().includes(q);
+      const matchCategory = item.category.toLowerCase().includes(q);
+      const matchAliases = item.aliases?.some(a => a.toLowerCase().includes(q) || a.slice(1).toLowerCase().includes(q));
+
+      return matchCat && (matchTrigger || matchLabel || matchDesc || matchBadge || matchCategory || Boolean(matchAliases));
     });
-  }, [forceActionItems, actionCategoryFilter, actionSearchQuery]);
+  }, [unifiedDirectives, directiveCategoryFilter, mentionFilter]);
 
   const handleForceDispatchAction = (label: string, action: any, desc?: string) => {
     playTapSound();
@@ -648,8 +719,128 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
       role: 'assistant',
       content: `Acknowledged. Executed simulator action: ${label}. Telemetry updated accordingly.`
     });
+  };
 
-    setIsActionMenuOpen(false);
+  const handleSelectActionDirective = (item: DirectiveItem) => {
+    playTapSound();
+    if (item.action) {
+      handleForceDispatchAction(item.label, item.action, item.desc);
+    }
+    // Remove the @mention prefix from input
+    setInput(prev => {
+      return prev.replace(/(?:^|\s)@([a-zA-Z0-9_\s]*)$/, '').trim();
+    });
+    setIsMentionMenuOpen(false);
+    inputRef.current?.focus();
+  };
+
+  // Attachment Operations: Local Upload, Viewport Snapshot, Telemetry Export
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    playTapSound();
+
+    Array.from(files).forEach((file) => {
+      const isImg = file.type.startsWith('image/');
+      const reader = new FileReader();
+
+      if (isImg) {
+        reader.onload = (event) => {
+          const dataUrl = event.target?.result as string;
+          setPendingAttachments(prev => [
+            ...prev,
+            {
+              id: 'file-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+              name: file.name,
+              type: file.type || 'image/png',
+              size: file.size,
+              dataUrl
+            }
+          ]);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        reader.onload = (event) => {
+          const textContent = event.target?.result as string;
+          setPendingAttachments(prev => [
+            ...prev,
+            {
+              id: 'file-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+              name: file.name,
+              type: file.type || 'text/plain',
+              size: file.size,
+              textContent: textContent?.slice(0, 10000)
+            }
+          ]);
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setIsAttachMenuOpen(false);
+  };
+
+  const captureViewportSnapshot = () => {
+    playTapSound();
+    try {
+      const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+      let dataUrl = '';
+      if (canvas && canvas.width > 0 && canvas.height > 0) {
+        try {
+          dataUrl = canvas.toDataURL('image/png');
+        } catch (err) {
+          console.warn("Canvas capture warning:", err);
+        }
+      }
+      const timestamp = new Date().toISOString().slice(11, 19).replace(/:/g, '-');
+      const newAttachment: AttachedFile = {
+        id: 'snapshot-' + Date.now(),
+        name: `viewport_snapshot_${timestamp}.png`,
+        type: 'image/png',
+        size: dataUrl ? Math.round(dataUrl.length * 0.75) : 8192,
+        dataUrl: dataUrl || undefined
+      };
+      setPendingAttachments(prev => [...prev, newAttachment]);
+      setIsAttachMenuOpen(false);
+    } catch (e) {
+      console.error("Capture snapshot failed", e);
+    }
+  };
+
+  const attachTelemetryState = () => {
+    playTapSound();
+    const telemetryData = {
+      capturedAt: new Date().toISOString(),
+      focusedBody: currentPlanet || 'Solar System Overview',
+      simulationSpeed: currentSettings?.speedMultiplier ?? 1,
+      activeLayers: {
+        orbits: currentSettings?.showOrbits ?? true,
+        labels: currentSettings?.showLabels ?? true,
+        asteroids: currentSettings?.showAsteroids ?? true,
+        constellations: currentSettings?.showConstellations ?? true,
+        spacecraft: currentSettings?.showSpacecraft ?? true,
+        bloom: currentSettings?.enableBloom ?? true,
+        temperatureUnit: currentSettings?.tempUnit ?? 'C'
+      },
+      graphics: {
+        graphicsPreset: currentSettings?.graphicsPreset ?? 'high',
+        resScale: currentSettings?.resScale ?? 1.0,
+        fpsCap: currentSettings?.fpsCap ?? 120
+      }
+    };
+    const jsonStr = JSON.stringify(telemetryData, null, 2);
+    const newAttachment: AttachedFile = {
+      id: 'telemetry-' + Date.now(),
+      name: `telemetry_${Date.now().toString().slice(-6)}.json`,
+      type: 'application/json',
+      size: new Blob([jsonStr]).size,
+      textContent: jsonStr
+    };
+    setPendingAttachments(prev => [...prev, newAttachment]);
+    setIsAttachMenuOpen(false);
   };
 
   const handleApproveActions = (msgId: string) => {
@@ -991,6 +1182,14 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
     const draftText = noteContent.trim();
     const prompt = `Please refine the following scientific research note into a high-quality Markdown document with LaTeX math formatting.\nIMPORTANT: First, output a concise explanation of what you are doing inside <think>...</think> tags. Keep the thought to exactly 3-6 words, starting with a verb (e.g. "Formatting equations...", "Refining scholarly tone..."). Then, output ONLY the final refined note text outside the tags. Do NOT include any conversational filler.\n\nNOTE TO REFINE:\n${draftText}`;
 
+    const effectiveGeminiKey = geminiApiKey || (aiModelName === 'Gemini' ? apiKey : '');
+    if (!effectiveGeminiKey || !effectiveGeminiKey.trim()) {
+      setAiRefineCoT("Gemini API key is required in Settings for security.");
+      setIsAiRefining(false);
+      setTimeout(() => setAiRefineCoT(null), 4000);
+      return;
+    }
+
     try {
       const systemInstruction = `You are the Stellar Historian research refinement engine.
 Your task: Directly refine, clarify, format, and enhance the user's scientific research note with rigorous scientific precision, clean Markdown structure, and standard LaTeX notation for mathematical equations ($...$ or $$...$$).
@@ -1002,7 +1201,7 @@ STRICT INSTRUCTION: DO NOT use ANY emojis under any circumstances. Emojis are st
         body: JSON.stringify({
           prompt,
           systemInstruction,
-          apiKey
+          apiKey: effectiveGeminiKey
         })
       });
 
@@ -1115,7 +1314,6 @@ STRICT INSTRUCTION: DO NOT use ANY emojis under any circumstances. Emojis are st
 - Selected/Focused Celestial Body ID: ${currentSettings.selectedPlanetId ? `"${currentSettings.selectedPlanetId}"` : 'None (no body is focused)'}
 - Graphics Quality Preset (graphicsPreset): ${currentSettings.graphicsPreset ? currentSettings.graphicsPreset.toUpperCase() : 'HIGH'}
 - FSR / Resolution Scale (resScale): ${currentSettings.resScale !== undefined ? (currentSettings.resScale >= 0.999 ? '1.0 (Native/Off)' : currentSettings.resScale === 0.85 ? '0.85 (Ultra Quality)' : currentSettings.resScale === 0.75 ? '0.75 (Quality)' : currentSettings.resScale === 0.67 ? '0.67 (Balanced)' : currentSettings.resScale === 0.50 ? '0.50 (Performance)' : currentSettings.resScale) : '1.0'}
-- Performance Mode (perfMode): ${currentSettings.perfMode ? 'ENABLED' : 'DISABLED'}
 - High Definition (HD) Textures (hdMode): ${currentSettings.hdMode ? 'ENABLED' : 'DISABLED'}
 - Bloom Lighting Glow (enableBloom): ${currentSettings.enableBloom !== false ? 'ENABLED' : 'DISABLED'}
 - Chromatic Aberration (enableChromatic): ${currentSettings.enableChromatic !== false ? 'ENABLED' : 'DISABLED'}
@@ -1138,7 +1336,7 @@ Formatting: Use standard clean Markdown. When writing scientific units or formul
 
 CRITICAL FACTUALITY & WEB GROUNDING DIRECTIVE:
 You MUST ALWAYS rely exclusively on verified, real-world scientific data, published astrophysics literature, and live web search results instead of guessing, fabricating, or assuming unverified facts.
-When Web Search (@Web) is triggered or live web search findings are provided:
+When Web Search (@Web, @Search, @Browse, @Ground) is triggered or live web search findings are provided:
 1. Synthesize your response using the verified search results alongside core physics principles.
 2. YOU MUST CITE YOUR SOURCES INLINE using bracketed numbers like [1], [2], etc., matching the exact sourceIndex of the provided search results.
 3. NEVER fabricate numbers, dates, mission parameters, or non-existent URLs/papers. If information is uncertain or not found in search results, explicitly state the limitation.
@@ -1198,7 +1396,6 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
    - "showAsteroids": true|false
    - "showConstellations": true|false
    - "showSpacecraft": true|false
-   - "perfMode": true|false
    - "hdMode": true|false
    - "tempUnit": "C"|"F"|"K"
    - "resScale": 0.50|0.67|0.75|0.85|1.0
@@ -1230,6 +1427,20 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
 15. MULTI-ACTION BATCH:
     ACTION_TRIGGER:{"type":"batch","actions":[{"type":"select_planet","id":"mars"},{"type":"set_speed","value":10}]}`;
 
+      if (!apiKey || !apiKey.trim()) {
+        const errorMsgId = Date.now().toString();
+        const errorMsg: Message = {
+          id: errorMsgId,
+          role: 'model',
+          text: `An API key is required for ${aiModelName || 'Gemini'} for security. Please open Settings (AI Assistance) and enter your ${aiModelName || 'Gemini'} API key to enable research queries.`,
+          timestamp: Date.now()
+        };
+        setMessages(prev => [...prev, errorMsg]);
+        setIsLoading(false);
+        setStreamingText('');
+        return;
+      }
+
       const isWebSearch = overridePrompt ? checkIsWebSearchMention(overridePrompt) : checkIsWebSearchMention(input);
 
       const response = await fetch('/api/ai/chat', {
@@ -1238,7 +1449,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
         body: JSON.stringify({ 
           messages: chatHistory.current,
           systemInstruction,
-          apiKey,
+          apiKey: apiKey.trim(),
           provider: aiModelName,
           webSearch: isWebSearch
         })
@@ -1260,7 +1471,8 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
         isWebSearchGrounded = Boolean(data.isWebSearchGrounded);
         searchQuery = data.searchQuery || '';
       } else {
-        throw new Error('API response not ok');
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.detail || errJson.error || 'API response not ok');
       }
 
       const { cleanedText, actions: actionsToExecute } = parseAIActionsAndCleanText(fullText);
@@ -1358,7 +1570,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
 
   const handleSend = async (customText?: string, isVoice: boolean = false) => {
     const textToSend = customText || input;
-    if (!textToSend.trim() || isLoading) return;
+    if ((!textToSend.trim() && pendingAttachments.length === 0) || isLoading) return;
 
     if (isListening) {
       recognitionRef.current?.stop();
@@ -1367,23 +1579,40 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
     }
 
     const userText = textToSend.trim();
+    const attachmentsSnapshot = [...pendingAttachments];
+    
+    // If there are text/JSON attachments, append their context for the model
+    let promptWithAttachments = userText;
+    if (attachmentsSnapshot.length > 0) {
+      const textAttachments = attachmentsSnapshot.filter(a => a.textContent);
+      if (textAttachments.length > 0) {
+        promptWithAttachments += `\n\n[Attached Data Files:\n${textAttachments.map(a => `--- File: ${a.name} ---\n${a.textContent}`).join('\n\n')}\n]`;
+      }
+      const imgAttachments = attachmentsSnapshot.filter(a => !a.textContent);
+      if (imgAttachments.length > 0) {
+        promptWithAttachments += `\n\n[Attached Visual Snapshots: ${imgAttachments.map(a => a.name).join(', ')}]`;
+      }
+    }
+
     const userMsg: Message = {
       id: Date.now().toString(),
       role: 'user',
-      text: userText,
-      timestamp: Date.now()
+      text: userText || (attachmentsSnapshot.length > 0 ? `[Attached ${attachmentsSnapshot.length} item${attachmentsSnapshot.length > 1 ? 's' : ''}]` : ''),
+      timestamp: Date.now(),
+      attachments: attachmentsSnapshot.length > 0 ? attachmentsSnapshot : undefined
     };
 
     setMessages(prev => [...prev, userMsg]);
-    chatHistory.current.push({ role: 'user', content: userText });
-    setUserQueryHistory(prev => [userText, ...prev.slice(0, 19)]);
+    chatHistory.current.push({ role: 'user', content: promptWithAttachments });
+    setUserQueryHistory(prev => [userText || 'Attached telemetry', ...prev.slice(0, 19)]);
     setHistoryIndex(-1);
     
     setInput('');
+    setPendingAttachments([]);
     playTapSound();
     setActiveTab('dialogue');
 
-    await sendQuestionForHistory(userText, isVoice);
+    await sendQuestionForHistory(promptWithAttachments, isVoice);
   };
 
   useEffect(() => {
@@ -1398,28 +1627,32 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
     if (match) {
       setMentionFilter(match[1]);
       setIsMentionMenuOpen(true);
-      setMentionSelectedIndex(0);
     } else {
       setIsMentionMenuOpen(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isMentionMenuOpen && filteredMentionOptions.length > 0) {
+    if (isMentionMenuOpen && filteredDirectives.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setMentionSelectedIndex(prev => (prev + 1) % filteredMentionOptions.length);
+        setMentionSelectedIndex(prev => (prev + 1) % filteredDirectives.length);
         return;
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setMentionSelectedIndex(prev => (prev - 1 + filteredMentionOptions.length) % filteredMentionOptions.length);
+        setMentionSelectedIndex(prev => (prev - 1 + filteredDirectives.length) % filteredDirectives.length);
         return;
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        if (filteredMentionOptions[mentionSelectedIndex]) {
-          handleSelectMention(filteredMentionOptions[mentionSelectedIndex].trigger);
+        const selected = filteredDirectives[mentionSelectedIndex] || filteredDirectives[0];
+        if (selected) {
+          if (selected.isWebSearch) {
+            handleSelectMention();
+          } else {
+            handleSelectActionDirective(selected);
+          }
         }
         return;
       }
@@ -1455,6 +1688,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
     setMessages(prev => prev.length > 0 ? [prev[0]] : []);
     chatHistory.current = [];
     setStreamingText('');
+    setPendingAttachments([]);
   };
 
   // Filtered Dossiers
@@ -1501,6 +1735,12 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
     ];
   }, [currentPlanet]);
 
+  // Show contextual starters only until the first message from the user has been sent;
+  // Automatically restored to visible when the user resets or clears the conversation.
+  const showStarters = useMemo(() => {
+    return !messages.some(m => m.role === 'user');
+  }, [messages]);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -1512,14 +1752,14 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
           transition={{ duration: uiAnimations ? 0.2 / uiAnimSpeed : 0 }}
           className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 lg:p-6 ui-layer"
         >
-          {/* Backdrop Blur */}
+          {/* Modal Backdrop */}
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: uiAnimations ? 0.2 / uiAnimSpeed : 0 }}
             onClick={() => { playTapSound(); onClose(); }}
-            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm pointer-events-auto"
+            className="absolute inset-0 bg-slate-950/60 pointer-events-auto"
           />
 
           {/* Main Modal Shell */}
@@ -1530,6 +1770,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
             transition={uiAnimations ? { duration: 0.22 / uiAnimSpeed, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }}
             className="panel relative w-full max-w-5xl xl:max-w-6xl h-[90vh] max-h-[880px] flex flex-col dual-kawase-glass glass-specular border border-white/20 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto z-10 select-none"
           >
+            <CosmicDust enabled={currentSettings?.enableUiCosmicSpecks ?? true} />
             <div className="w-full h-full flex flex-col min-h-0 relative z-10">
               
               {/* Top Header & Telemetry Status */}
@@ -1760,9 +2001,31 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                                         },
                                       }}
                                     >
-                                      {msg.text}
+                                      {isUser ? msg.text.replace(WEB_TRIGGER_PATTERN, '**$1**') : msg.text}
                                     </Markdown>
                                   </div>
+
+                                  {/* Render Attached Files if present */}
+                                  {msg.attachments && msg.attachments.length > 0 && (
+                                    <div className="mt-2.5 pt-2 border-t border-white/10 flex flex-wrap gap-2">
+                                      {msg.attachments.map(att => (
+                                        <div
+                                          key={att.id}
+                                          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950/70 border border-white/15 text-xs text-slate-200 shadow-sm"
+                                        >
+                                          {att.dataUrl && att.type.startsWith('image/') ? (
+                                            <img src={att.dataUrl} alt={att.name} className="w-6 h-6 rounded object-cover border border-white/10" />
+                                          ) : (
+                                            <FileText className="w-4 h-4 text-slate-400" />
+                                          )}
+                                          <div className="min-w-0">
+                                            <div className="text-[11px] font-mono text-slate-200 truncate max-w-[160px]">{att.name}</div>
+                                            <div className="text-[9px] font-mono text-slate-400">{Math.round(att.size / 1024)} KB</div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
 
                                   {/* Web Grounding & Verified Citations Section */}
                                   {msg.sources && msg.sources.length > 0 && (
@@ -2099,274 +2362,389 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                     </div>
                   </div>
 
-                  {/* Contextual Quick Starters & Prompt Carousel */}
-                  <div className="px-5 py-2 bg-slate-950/40 border-t border-white/5 z-30 shrink-0">
-                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1">
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 shrink-0 font-mono flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-slate-400" /> Starters:
-                      </span>
-                      {contextualPrompts.map((prompt, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => { playTapSound(); handleSend(prompt); }}
-                          disabled={isLoading}
-                          className="shrink-0 text-xs font-light px-3 py-1 rounded-full bg-slate-900/80 hover:bg-slate-800 border border-white/10 hover:border-white/20 text-slate-300 hover:text-white transition-all shadow-sm flex items-center gap-1.5"
-                        >
-                          <span>{prompt}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {/* Contextual Quick Starters & Prompt Carousel (Smoothly retracts after first message sent) */}
+                  <AnimatePresence>
+                    {showStarters && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0 }}
+                        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                        className="px-5 py-2 bg-slate-950/40 border-t border-white/5 z-30 shrink-0 overflow-hidden"
+                      >
+                        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 shrink-0 font-mono flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-slate-400" /> Starters:
+                          </span>
+                          {contextualPrompts.map((prompt, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => { playTapSound(); handleSend(prompt); }}
+                              disabled={isLoading}
+                              className="shrink-0 text-xs font-light px-3 py-1 rounded-full bg-slate-900/80 hover:bg-slate-800 border border-white/10 hover:border-white/20 text-slate-300 hover:text-white transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <span>{prompt}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Dialogue Input Deck */}
                   <div className="relative p-4 sm:p-5 border-t border-white/10 bg-slate-950/40 z-30 shrink-0">
-                    <div className="relative flex items-center gap-2.5">
-                      
-                      {/* '+' Action Menu Button on Far Left */}
-                      <div className="relative shrink-0" ref={actionMenuRef}>
+                    {/* Pending Attachments Staging Bar */}
+                    {pendingAttachments.length > 0 && (
+                      <div className="mb-3 flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
+                        <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1 font-semibold">
+                          <Paperclip className="w-3 h-3 text-slate-400" /> Attached:
+                        </span>
+                        {pendingAttachments.map(att => (
+                          <div
+                            key={att.id}
+                            className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-white/20 text-xs text-slate-200 shadow-sm shrink-0"
+                          >
+                            {att.dataUrl && att.type.startsWith('image/') ? (
+                              <img src={att.dataUrl} alt={att.name} className="w-5 h-5 rounded object-cover border border-white/10" />
+                            ) : (
+                              <FileText className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                            <span className="text-[11px] font-mono truncate max-w-[140px] text-slate-200">{att.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                playTapSound();
+                                setPendingAttachments(prev => prev.filter(p => p.id !== att.id));
+                              }}
+                              className="text-slate-400 hover:text-white p-0.5 rounded transition-colors"
+                              title="Remove attachment"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
                         <button
                           type="button"
                           onClick={() => {
                             playTapSound();
-                            setIsActionMenuOpen(prev => !prev);
+                            setPendingAttachments([]);
                           }}
-                          className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all duration-200 shadow-md ${
-                            isActionMenuOpen 
-                              ? 'bg-slate-800 border-white/30 text-white ring-2 ring-slate-400/40 scale-100' 
-                              : 'bg-slate-900/80 hover:bg-slate-800 border-white/15 hover:border-white/25 text-slate-300 hover:text-white active:scale-95'
-                          }`}
-                          title="Force Simulation Directive / LLM Actions"
-                          aria-label="Force Simulation Directive"
+                          className="text-[10px] font-mono text-slate-500 hover:text-slate-300 ml-1 underline cursor-pointer"
                         >
-                          <Plus className={`w-5 h-5 transition-transform duration-200 ${isActionMenuOpen ? 'rotate-45 text-white' : ''}`} />
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Message Input Bar with Integrated Attachment and Unified Directives Dropdown */}
+                    <div className="relative w-full flex items-center">
+                      {/* Autocomplete Unified Directives Menu */}
+                      <AnimatePresence>
+                        {isMentionMenuOpen && filteredDirectives.length > 0 && (
+                          <motion.div
+                            ref={mentionMenuRef}
+                            initial={{ opacity: 0, scaleY: 0, y: 8 }}
+                            animate={{ opacity: 1, scaleY: 1, y: 0 }}
+                            exit={{ opacity: 0, scaleY: 0, y: 8 }}
+                            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                            style={{ transformOrigin: 'bottom left' }}
+                            className="!absolute bottom-[calc(100%+12px)] left-0 w-80 sm:w-96 max-w-[calc(100vw-3rem)] max-h-[380px] bg-slate-900/90 dual-kawase-glass border border-white/15 rounded-xl shadow-2xl shadow-black/80 overflow-hidden z-50 flex flex-col p-1.5"
+                          >
+                            {/* Directives Header & Category Filters */}
+                            <div className="px-2.5 py-1.5 border-b border-white/10 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                              <span className="flex items-center gap-1.5 font-medium text-slate-300">
+                                <Sparkles className="w-3 h-3 text-slate-400" />
+                                Directives ({filteredDirectives.length})
+                              </span>
+                              <span className="text-[9px] text-slate-500">↑↓ to navigate • ↵ to select</span>
+                            </div>
+
+                            {/* Category Filter Pills */}
+                            <div className="flex items-center gap-1 overflow-x-auto scrollbar-none px-2 py-1.5 border-b border-white/5 bg-slate-950/40">
+                              {(['All', 'Web', 'Focus', 'Speed', 'Events', 'Layers'] as const).map(cat => (
+                                <button
+                                  key={cat}
+                                  type="button"
+                                  onClick={() => {
+                                    playTapSound();
+                                    setDirectiveCategoryFilter(cat);
+                                  }}
+                                  className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
+                                    directiveCategoryFilter === cat
+                                      ? 'bg-slate-800 text-white border border-white/20 shadow-sm'
+                                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                  }`}
+                                >
+                                  {cat}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Directive Items List - Uniform styling for all directives including @Web search */}
+                            <div className="overflow-y-auto max-h-[260px] p-1 space-y-1 scrollbar-thin">
+                              {filteredDirectives.map((item, idx) => {
+                                const isSelected = idx === mentionSelectedIndex;
+
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (item.isWebSearch) {
+                                        handleSelectMention();
+                                      } else {
+                                        handleSelectActionDirective(item);
+                                      }
+                                    }}
+                                    className={`w-full p-2 rounded-lg flex items-center gap-2.5 transition-all text-left group active:scale-[0.98] border cursor-pointer ${
+                                      isSelected 
+                                        ? 'bg-slate-800/95 border-white/25 text-white' 
+                                        : 'hover:bg-slate-800/70 border-transparent hover:border-white/10 text-slate-200'
+                                    }`}
+                                  >
+                                    <div className="w-7 h-7 rounded-lg bg-slate-800/90 border border-white/10 flex items-center justify-center shrink-0 group-hover:border-white/20 transition-colors text-slate-300 group-hover:text-white">
+                                      {item.icon}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-xs font-medium text-slate-200 group-hover:text-white flex items-center gap-1.5 truncate">
+                                        <span>{item.label}</span>
+                                        <span className="text-[10px] font-mono text-slate-400">{item.trigger}</span>
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 group-hover:text-slate-300 font-light truncate">
+                                        {item.desc}
+                                      </div>
+                                    </div>
+                                    {item.badge && (
+                                      <span className="shrink-0 text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-slate-400 group-hover:text-slate-200">
+                                        {item.badge}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Paperclip Attachment Button placed directly in message bar (replacing Compass icon) */}
+                      <div className="absolute left-2.5 z-20 flex items-center" ref={attachMenuRef}>
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          onChange={handleFileUpload} 
+                          accept="image/*,.txt,.json,.csv,.md,.pdf" 
+                          className="hidden" 
+                          multiple 
+                        />
+                        
+                        <button
+                          type="button"
+                          onClick={() => {
+                            playTapSound();
+                            setIsAttachMenuOpen(prev => !prev);
+                          }}
+                          className={`p-2 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer ${
+                            isAttachMenuOpen 
+                              ? 'bg-slate-800 text-white border border-white/25 shadow-sm' 
+                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 active:scale-95'
+                          }`}
+                          title="Attach file, snapshot, or telemetry"
+                          aria-label="Attach file"
+                        >
+                          <Paperclip className={`w-4 h-4 transition-transform duration-200 ${isAttachMenuOpen ? 'rotate-45 text-white' : ''}`} />
                         </button>
 
-                        {/* Upward Dropdown Menu */}
+                        {/* Upward Attach File Popup Menu */}
                         <AnimatePresence>
-                          {isActionMenuOpen && (
+                          {isAttachMenuOpen && (
                             <motion.div
-                              initial={{ opacity: 0, y: 12, scale: 0.96 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: 10, scale: 0.96 }}
-                              transition={{ duration: 0.16 }}
-                              className="!absolute bottom-[calc(100%+16px)] left-0 w-80 sm:w-96 max-w-[calc(100vw-3rem)] max-h-[460px] bg-slate-900/80 dual-kawase-glass border border-white/20 rounded-2xl shadow-2xl shadow-black/80 overflow-hidden flex flex-col z-[100] text-slate-200 pointer-events-auto"
+                              initial={{ opacity: 0, scaleY: 0, y: 10 }}
+                              animate={{ opacity: 1, scaleY: 1, y: 0 }}
+                              exit={{ opacity: 0, scaleY: 0, y: 10 }}
+                              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                              style={{ transformOrigin: 'bottom left' }}
+                              className="!absolute bottom-[calc(100%+14px)] left-0 w-72 sm:w-80 max-w-[calc(100vw-3rem)] bg-slate-900/90 dual-kawase-glass border border-white/20 rounded-2xl shadow-2xl shadow-black/80 overflow-hidden flex flex-col z-[100] text-slate-200 pointer-events-auto"
                             >
                               {/* Menu Header */}
-                              <div className="p-3.5 border-b border-white/10 flex items-center justify-between bg-slate-950/50">
+                              <div className="p-3 border-b border-white/10 flex items-center justify-between bg-slate-950/50">
                                 <div className="flex items-center gap-2">
-                                  <Sparkles className="w-4 h-4 text-slate-300 shrink-0" />
+                                  <Paperclip className="w-4 h-4 text-slate-300 shrink-0" />
                                   <div>
                                     <h4 className="text-xs font-semibold text-white tracking-wide">
-                                      Direct Action Dispatch
+                                      Attach file
                                     </h4>
-                                    <p className="text-[10px] text-slate-400 font-light">Force any action the LLM can dispatch</p>
+                                    <p className="text-[10px] text-slate-400 font-light">Upload documents or capture telemetry</p>
                                   </div>
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => { playTapSound(); setIsActionMenuOpen(false); }}
-                                  className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                                  onClick={() => { playTapSound(); setIsAttachMenuOpen(false); }}
+                                  className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
 
-                              {/* Search & Category Filter */}
-                              <div className="p-3 border-b border-white/10 bg-slate-950/30 space-y-2">
-                                <div className="relative">
-                                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                  <input
-                                    type="text"
-                                    value={actionSearchQuery}
-                                    onChange={(e) => setActionSearchQuery(e.target.value)}
-                                    placeholder="Filter celestial targets, simulation speed, presets..."
-                                    className="w-full bg-slate-950/80 border border-white/10 rounded-lg py-1.5 pl-8 pr-7 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-white/30 transition-all font-light"
-                                  />
-                                  {actionSearchQuery && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setActionSearchQuery('')}
-                                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs p-0.5"
-                                    >
-                                      <X className="w-3 h-3" />
-                                    </button>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-0.5">
-                                  {(['All', 'Focus', 'Events', 'Speed', 'Graphics', 'Layers'] as const).map(cat => (
-                                    <button
-                                      key={cat}
-                                      type="button"
-                                      onClick={() => { playTapSound(); setActionCategoryFilter(cat); }}
-                                      className={`shrink-0 px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
-                                        actionCategoryFilter === cat
-                                          ? 'bg-slate-800 text-white border border-white/20 shadow-sm'
-                                          : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                                      }`}
-                                    >
-                                      {cat}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Action Items List */}
-                              <div className="overflow-y-auto max-h-[280px] p-2 space-y-1 scrollbar-thin">
-                                {filteredForceActions.length === 0 ? (
-                                  <div className="p-6 text-center text-xs text-slate-500">
-                                    No actions match your search query.
+                              {/* Attachment Actions */}
+                              <div className="p-2 space-y-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    playTapSound();
+                                    fileInputRef.current?.click();
+                                  }}
+                                  className="w-full p-2.5 rounded-xl flex items-center gap-3 hover:bg-slate-800/80 border border-transparent hover:border-white/10 transition-all text-left group active:scale-[0.98] cursor-pointer"
+                                >
+                                  <div className="w-8 h-8 rounded-lg bg-slate-800/90 border border-white/10 flex items-center justify-center shrink-0 group-hover:border-white/20 transition-colors text-slate-300 group-hover:text-white">
+                                    <FileUp className="w-4 h-4" />
                                   </div>
-                                ) : (
-                                  filteredForceActions.map(item => (
-                                    <button
-                                      key={item.id}
-                                      type="button"
-                                      onClick={() => handleForceDispatchAction(item.label, item.action, item.desc)}
-                                      className="w-full p-2 rounded-xl flex items-center gap-2.5 hover:bg-slate-800/80 border border-transparent hover:border-white/10 transition-all text-left group active:scale-[0.98]"
-                                    >
-                                      <div className="w-7 h-7 rounded-lg bg-slate-800/90 border border-white/10 flex items-center justify-center shrink-0 group-hover:border-white/20 transition-colors">
-                                        {item.icon}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-xs font-medium text-slate-200 group-hover:text-white flex items-center gap-1.5 truncate">
-                                          <span>{item.label}</span>
-                                        </div>
-                                        <div className="text-[10px] text-slate-400 group-hover:text-slate-300 font-light truncate">
-                                          {item.desc}
-                                        </div>
-                                      </div>
-                                      {item.badge && (
-                                        <span className="shrink-0 text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-slate-400 group-hover:text-slate-200">
-                                          {item.badge}
-                                        </span>
-                                      )}
-                                    </button>
-                                  ))
-                                )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-slate-200 group-hover:text-white flex items-center justify-between">
+                                      <span>Upload Document or Image</span>
+                                      <span className="text-[9px] font-mono text-slate-400">PDF, TXT, IMG</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-light truncate">
+                                      Add research papers, notes, or images
+                                    </p>
+                                  </div>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={captureViewportSnapshot}
+                                  className="w-full p-2.5 rounded-xl flex items-center gap-3 hover:bg-slate-800/80 border border-transparent hover:border-white/10 transition-all text-left group active:scale-[0.98] cursor-pointer"
+                                >
+                                  <div className="w-8 h-8 rounded-lg bg-slate-800/90 border border-white/10 flex items-center justify-center shrink-0 group-hover:border-white/20 transition-colors text-slate-300 group-hover:text-white">
+                                    <Camera className="w-4 h-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-slate-200 group-hover:text-white flex items-center justify-between">
+                                      <span>Capture Viewport Snapshot</span>
+                                      <span className="text-[9px] font-mono text-slate-400">3D Frame</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-light truncate">
+                                      Take current 3D celestial canvas snapshot
+                                    </p>
+                                  </div>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={attachTelemetryState}
+                                  className="w-full p-2.5 rounded-xl flex items-center gap-3 hover:bg-slate-800/80 border border-transparent hover:border-white/10 transition-all text-left group active:scale-[0.98] cursor-pointer"
+                                >
+                                  <div className="w-8 h-8 rounded-lg bg-slate-800/90 border border-white/10 flex items-center justify-center shrink-0 group-hover:border-white/20 transition-colors text-slate-300 group-hover:text-white">
+                                    <FileCode className="w-4 h-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-slate-200 group-hover:text-white flex items-center justify-between">
+                                      <span>Attach Simulation Telemetry</span>
+                                      <span className="text-[9px] font-mono text-slate-400">JSON</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-light truncate">
+                                      Include camera, speed, and focus status
+                                    </p>
+                                  </div>
+                                </button>
                               </div>
 
                               {/* Footer Info */}
-                              <div className="px-3.5 py-2 bg-slate-950/60 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                                <span>Commander Override Engine</span>
-                                <span>{filteredForceActions.length} Actions Available</span>
+                              <div className="px-3.5 py-1.5 bg-slate-950/60 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                                <span>Stellar Researcher Attachment</span>
+                                <span>Max 10 MB</span>
                               </div>
                             </motion.div>
                           )}
                         </AnimatePresence>
                       </div>
 
-                      {/* Main Message Input Bar with Mention Dropdown */}
-                      <div className="relative flex-1 flex items-center">
-                        {/* Autocomplete Mention Menu for @Web (Detached, Floating & Minimalist) */}
-                        <AnimatePresence>
-                          {isMentionMenuOpen && filteredMentionOptions.length > 0 && (
-                            <motion.div
-                              ref={mentionMenuRef}
-                              initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                              transition={{ duration: 0.12, ease: 'easeOut' }}
-                              className="!absolute bottom-[calc(100%+12px)] left-0 w-72 sm:w-80 bg-slate-900/80 dual-kawase-glass border border-white/15 rounded-xl shadow-2xl shadow-black/80 overflow-hidden z-50 flex flex-col p-1"
-                            >
-                              <div className="px-2.5 py-1.5 border-b border-white/10 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                                <span className="flex items-center gap-1.5 font-medium">
-                                  <Globe className="w-3 h-3 text-slate-400" />
-                                  Directive
+                      {/* Message Input Shell with Synchronized Text Backdrop */}
+                      <div className="relative flex-1 flex items-center bg-slate-900/80 dual-kawase-glass-subtle border border-white/15 rounded-xl shadow-inner focus-within:border-slate-500/60 transition-all">
+                        {/* Synchronized text backdrop that bolds triggers with "@" */}
+                        <div
+                          ref={backdropRef}
+                          aria-hidden="true"
+                          className="absolute inset-0 flex items-center py-3.5 pl-11 pr-20 text-sm font-light tracking-wide leading-5 pointer-events-none overflow-hidden whitespace-pre select-none rounded-xl z-0"
+                        >
+                          {input ? (
+                            input.split(WEB_TRIGGER_PATTERN).map((part, index) => {
+                              const isTrigger = isWebTriggerText(part);
+                              if (isTrigger) {
+                                return (
+                                  <strong key={index} className="font-bold text-white tracking-tight">
+                                    {part}
+                                  </strong>
+                                );
+                              }
+                              return (
+                                <span key={index} className="text-slate-100 font-light">
+                                  {part}
                                 </span>
-                                <span className="text-[9px] text-slate-500">Tab ↵</span>
-                              </div>
-                              <div className="pt-1">
-                                {filteredMentionOptions.map((opt, idx) => (
-                                  <button
-                                    key={opt.trigger}
-                                    type="button"
-                                    onClick={() => handleSelectMention(opt.trigger)}
-                                    className={`w-full px-2.5 py-2 rounded-lg flex items-center justify-between text-left transition-all ${
-                                      mentionSelectedIndex === idx
-                                        ? 'bg-white/10 text-white'
-                                        : 'hover:bg-white/5 text-slate-300'
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                      <span className="text-xs font-mono font-semibold text-slate-100">
-                                        {opt.trigger}
-                                      </span>
-                                      <span className="text-xs text-slate-400 font-light truncate">
-                                        {opt.label}
-                                      </span>
-                                    </div>
-                                    <span className="text-[10px] text-slate-500 font-light truncate pl-2 hidden sm:inline">
-                                      {opt.desc}
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        <div className="absolute left-4 pointer-events-none flex items-center justify-center z-10">
-                          {isWebSearchActiveInInput ? (
-                            <Globe className="w-4 h-4 text-white" strokeWidth={1.5} />
-                          ) : !isListening && (
-                            <Compass className="w-4 h-4 text-slate-400" />
-                          )}
+                              );
+                            })
+                          ) : null}
                         </div>
-                        
+
                         {isListening && (
                           <canvas ref={canvasRef} className="w-full h-full absolute inset-0 rounded-xl opacity-40 pointer-events-none z-0" width={600} height={50} />
                         )}
+
                         <input
                           ref={inputRef}
                           type="text"
                           value={input}
-                          onChange={handleInputChange}
-                          onKeyDown={handleKeyDown}
-                          placeholder={isListening ? (input ? "" : "Listening...") : (currentPlanet ? `Inquire about ${currentPlanet} or type @Web to browse...` : "Ask astrophysics question, type @Web, or issue command...")}
-                          className="w-full bg-slate-900/80 dual-kawase-glass-subtle border border-white/15 rounded-xl py-3.5 pl-12 pr-20 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-slate-500/60 transition-all font-light tracking-wide shadow-inner relative z-1"
-                        />
-                        
-                        {/* Microphone Button (Speech to Text) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playTapSound();
-                            toggleSpeechToText();
+                          onChange={(e) => {
+                            handleInputChange(e);
+                            syncBackdropScroll();
                           }}
-                          className={`absolute right-10 p-2 rounded-lg transition-all z-10 ${
-                            isListening
-                              ? 'text-red-400'
-                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                          }`}
-                          title="Voice Input (Speech-to-Text)"
-                          aria-label="Voice Input"
-                        >
-                          {isListening ? (
-                            <Mic className="w-4 h-4" />
-                          ) : (
-                            <MicOff className="w-4 h-4" />
-                          )}
-                        </button>
-
-                        <button
-                          onClick={() => { playTapSound(); handleSend(); }}
-                          disabled={!input.trim() || isLoading}
-                          className={`absolute right-2 p-2 rounded-lg transition-all z-10 ${
-                            input.trim() && !isLoading
-                              ? 'bg-slate-800 border border-white/15 text-slate-200 hover:bg-slate-700 active:scale-[0.96] shadow-md font-semibold'
-                              : 'text-slate-600 bg-slate-900/40 border border-transparent cursor-not-allowed opacity-40'
-                          }`}
-                          title="Send Transmission"
-                        >
-                          <Send className="w-4 h-4 text-slate-300" />
-                        </button>
+                          onKeyDown={handleKeyDown}
+                          onKeyUp={syncBackdropScroll}
+                          onSelect={syncBackdropScroll}
+                          onScroll={syncBackdropScroll}
+                          placeholder={isListening ? (input ? "" : "Listening...") : (currentPlanet ? `Inquire about ${currentPlanet} or type @Web / @Ground to browse...` : "Ask astrophysics question, type @Web, or issue directive...")}
+                          className="w-full bg-transparent border-0 py-3.5 pl-11 pr-20 text-sm text-transparent caret-white placeholder:text-slate-500 focus:outline-none transition-all font-light tracking-wide leading-5 relative z-10 selection:bg-slate-700/60 selection:text-transparent"
+                        />
                       </div>
+                      
+                      {/* Microphone Button (Speech to Text) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          toggleSpeechToText();
+                        }}
+                        className={`absolute right-10 p-2 rounded-lg transition-all z-20 ${
+                          isListening
+                            ? 'text-red-400'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                        }`}
+                        title="Voice Input (Speech-to-Text)"
+                        aria-label="Voice Input"
+                      >
+                        {isListening ? (
+                          <Mic className="w-4 h-4" />
+                        ) : (
+                          <MicOff className="w-4 h-4" />
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => { playTapSound(); handleSend(); }}
+                        disabled={!input.trim() || isLoading}
+                        className={`absolute right-2 p-2 rounded-lg transition-all z-20 ${
+                          input.trim() && !isLoading
+                            ? 'bg-slate-800 border border-white/15 text-slate-200 hover:bg-slate-700 active:scale-[0.96] shadow-md font-semibold cursor-pointer'
+                            : 'text-slate-600 bg-slate-900/40 border border-transparent cursor-not-allowed opacity-40'
+                        }`}
+                        title="Send Transmission"
+                      >
+                        <Send className="w-4 h-4 text-slate-300" />
+                      </button>
                     </div>
                     
                     <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-slate-500 font-mono">
-                      <span>Tip: Use ↑ / ↓ for query history • Click + for direct simulation actions</span>
+                      <span>Tip: Use ↑ / ↓ for query history • Type @ for directives • Click 📎 to attach</span>
                       <span className="uppercase tracking-widest text-slate-600 font-semibold">ENCYCLOPEDIA GALACTICA</span>
                     </div>
                   </div>
@@ -2975,6 +3353,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                                 className="w-full"
                                 buttonClassName="bg-slate-950/80 border border-white/10 hover:bg-slate-900 text-slate-200 text-xs rounded-xl px-3.5 py-2.5"
                                 menuClassName="bg-slate-950 border border-white/15"
+                                playTapSound={playTapSound}
                               />
                             </div>
                           </div>

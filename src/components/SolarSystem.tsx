@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, useDeferredValue } from 'react';
-import { ZoomIn, ZoomOut, MousePointer2, ChevronUp, ChevronDown, Settings, Play, Pause, RotateCcw, X, Info, AlertTriangle, Search, Globe, Star, Share2, Sun, Aperture, Rocket, Sparkles, Wand2, Loader2, Thermometer, Weight, Activity, BookOpen, Monitor, Sliders, Volume2, VolumeX, Eye, EyeOff, Gauge, Zap, Bot, Grid, Cpu, Layers, Languages, Check, Focus, Command, CornerDownLeft, SlidersHorizontal, Compass, History, Trash2, CircleDot, Moon, Maximize2, Snowflake, ShieldCheck, Orbit, Radio, Headphones } from 'lucide-react';
+import { ZoomIn, ZoomOut, MousePointer2, ChevronUp, ChevronDown, Settings, Play, Pause, RotateCcw, X, Info, AlertTriangle, AlertCircle, Search, Globe, Star, Share2, Sun, Aperture, Rocket, Sparkles, Wand2, Loader2, Thermometer, Weight, Activity, BookOpen, Monitor, Sliders, Volume2, VolumeX, Eye, EyeOff, Gauge, Zap, Bot, Grid, Cpu, Layers, Languages, Check, Focus, Command, CornerDownLeft, SlidersHorizontal, Compass, History, Trash2, CircleDot, Moon, Maximize2, Snowflake, ShieldCheck, Orbit, Radio, Headphones, Target, Key } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import AIResearcher from './AIResearcher';
 import { GeminiSidePanel } from './GeminiSidePanel';
@@ -10,6 +10,13 @@ import { BLACK_HOLES } from '../data/blackHoles';
 import { SPACECRAFTS } from '../data/spacecrafts';
 import { CelestialMiniPreview } from './CelestialMiniPreview';
 import { WebGpuDisabledModal } from './WebGpuDisabledModal';
+import CosmicDust from './CosmicDust';
+import { getKeplerianOrbitalState, KEPLERIAN_DATA } from '../utils/orbitalPhysics';
+import { calculateLagrangePoints, getJwstHaloPosition, drawGravitationalContours, LagrangePoint } from '../utils/lagrangePhysics';
+import { SolarWindEngine, MagnetosphereTarget } from '../utils/solarWindPhysics';
+import { SpaceSonificationEngine } from '../utils/spaceSonification';
+import { uiSound, UiTapVariant } from '../utils/uiSoundSynthesis';
+import { TactileSlider } from './TactileSlider';
 
 const BODY_DETAILS: Record<string, {
   type: string;
@@ -125,6 +132,67 @@ const STARS = Array.from({ length: 15000 }).map(() => {
   };
 });
 
+export type AiModelType = 'Gemini' | 'ChatGPT' | 'Claude' | 'Mistral' | 'Grok';
+
+export interface AiProviderMeta {
+  id: AiModelType;
+  name: string;
+  provider: string;
+  badge: string;
+  keyPlaceholder: string;
+  keyPrefixHint: string;
+  description: string;
+  isBuiltInDefault?: boolean;
+}
+
+export const AI_PROVIDERS_META: Record<AiModelType, AiProviderMeta> = {
+  Gemini: {
+    id: 'Gemini',
+    name: 'Gemini',
+    provider: 'Google DeepMind',
+    badge: 'Gemini 3.8 Flash',
+    keyPlaceholder: 'Input API key here...',
+    keyPrefixHint: '',
+    description: 'Requires personal Google AI Studio / Gemini API key. Enforced for security and client isolation.',
+  },
+  ChatGPT: {
+    id: 'ChatGPT',
+    name: 'ChatGPT',
+    provider: 'OpenAI',
+    badge: 'GPT-5.6 / GPT-4o-mini',
+    keyPlaceholder: 'Input API key here...',
+    keyPrefixHint: '',
+    description: 'Requires personal OpenAI API key with chat completions permissions.',
+  },
+  Claude: {
+    id: 'Claude',
+    name: 'Claude',
+    provider: 'Anthropic',
+    badge: 'Claude 3.5 Sonnet / Haiku',
+    keyPlaceholder: 'Input API key here...',
+    keyPrefixHint: '',
+    description: 'Requires Anthropic API key for Messages API endpoints.',
+  },
+  Mistral: {
+    id: 'Mistral',
+    name: 'Mistral AI',
+    provider: 'Mistral',
+    badge: 'Mistral Small / Large',
+    keyPlaceholder: 'Input API key here...',
+    keyPrefixHint: '',
+    description: 'Requires Mistral AI API key for chat completion endpoints.',
+  },
+  Grok: {
+    id: 'Grok',
+    name: 'Grok',
+    provider: 'SpaceXAI',
+    badge: 'Grok 4.6 / Grok Beta',
+    keyPlaceholder: 'Input API key here...',
+    keyPrefixHint: '',
+    description: 'Requires SpaceXAI API key for Grok endpoints.',
+  },
+};
+
 const getRadius = (r: number, isStar = false) => {
   if (isStar) return r;
   return Math.max(8, r * 0.7); // Planets are smaller but still visible and proportional
@@ -185,7 +253,7 @@ const HDModeModal = ({ isOpen, onClose, onConfirm, playTapSound, title, desc, bt
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: uiAnimations ? 0.2 / uiAnimSpeed : 0 }}
-            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm pointer-events-auto"
+            className="absolute inset-0 bg-slate-950/60 pointer-events-auto"
             onClick={() => { playTapSound && playTapSound(); onClose && onClose(); }}
           />
           <motion.div
@@ -224,63 +292,6 @@ const HDModeModal = ({ isOpen, onClose, onConfirm, playTapSound, title, desc, bt
   );
 };
 
-const PerfModeModal = ({ isOpen, onClose, onConfirm, playTapSound, title, desc, btnCancel, btnConfirm, uiAnimations = true, uiAnimSpeed = 1 }: any) => {
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          key="perf-mode-modal"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: uiAnimations ? 0.2 / uiAnimSpeed : 0 }}
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 ui-layer"
-        >
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: uiAnimations ? 0.2 / uiAnimSpeed : 0 }}
-            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm pointer-events-auto"
-            onClick={() => { playTapSound && playTapSound(); onClose && onClose(); }}
-          />
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0, y: 15 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 15 }}
-            transition={uiAnimations ? { duration: 0.22 / uiAnimSpeed, ease: [0.16, 1, 0.3, 1] } : { duration: 0 }}
-            className="relative z-10 dual-kawase-glass glass-specular rounded-2xl p-6 shadow-2xl max-w-sm w-full overflow-hidden border border-white/20 pointer-events-auto"
-          >
-            <div className="relative z-10">
-              <h2 className="text-2xl font-black text-emerald-500 mb-4 tracking-tight flex items-center gap-3">
-                <Info className="w-7 h-7" /> {title}
-              </h2>
-              <p className="text-slate-300 mb-8 font-mono text-sm leading-relaxed">
-                {desc}
-              </p>
-              <div className="flex gap-3 justify-end mt-2">
-                <button 
-                  onClick={() => { playTapSound(); onClose(); }} 
-                  className="px-4 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-medium active:scale-[0.98] active:opacity-80 active:duration-75 transition-all outline-none"
-                >
-                  {btnCancel}
-                </button>
-                <button 
-                  onClick={() => { playTapSound(); onConfirm(); }} 
-                  className="px-5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-bold active:scale-[0.98] active:opacity-80 active:duration-75 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] outline-none"
-                >
-                  {btnConfirm}
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-};
-
-
 // Pure W3C WebGPU WGSL Shader Source Generator
 const buildWgslShaderSource = (): string => {
   return `
@@ -299,6 +310,24 @@ const buildWgslShaderSource = (): string => {
       resScaleRatio: f32,
       cameraZoom: f32,
       focusFactor: f32,
+      enableRelativity: f32,
+      bhCount: f32,
+      bh1X: f32,
+      bh1Y: f32,
+      bh1Radius: f32,
+      bh1Spin: f32,
+      bh2X: f32,
+      bh2Y: f32,
+      bh2Radius: f32,
+      bh2Spin: f32,
+      bh3X: f32,
+      bh3Y: f32,
+      bh3Radius: f32,
+      bh3Spin: f32,
+      pad0: f32,
+      pad1: f32,
+      pad2: f32,
+      pad3: f32,
     };
 
     @group(0) @binding(0) var uSampler: sampler;
@@ -441,8 +470,86 @@ const buildWgslShaderSource = (): string => {
       return (vec3f(1.0, 0.9, 0.72) * (horizStreak + spike + coreRadial) + ghostCol) * intensity;
     }
 
+    // General Relativistic Gravitational Ray Deflection & Einstein Ring Optics
+    struct RelativisticLensingResult {
+      warpedUv: vec2f,
+      einsteinGlow: vec3f,
+      dopplerAccretion: vec3f,
+      shadowFactor: f32,
+    };
+
+    fn evaluateBlackHoleLensing(
+      uv: vec2f,
+      aspect: f32,
+      bhPos: vec2f,
+      bhRadius: f32,
+      bhSpin: f32,
+      texSize: vec2f
+    ) -> RelativisticLensingResult {
+      var res: RelativisticLensingResult;
+      res.warpedUv = uv;
+      res.einsteinGlow = vec3f(0.0);
+      res.dopplerAccretion = vec3f(0.0);
+      res.shadowFactor = 1.0;
+
+      if (bhRadius <= 0.001 || bhPos.x < -0.8 || bhPos.x > 1.8 || bhPos.y < -0.8 || bhPos.y > 1.8) {
+        return res;
+      }
+
+      let delta = (uv - bhPos) * vec2f(aspect, 1.0);
+      let dist = length(delta);
+      let rS = (bhRadius / texSize.y) * 0.28; // Schwarzschild radius in normalized UV screen space
+      let rPhoton = rS * 1.5;                 // Photon sphere radius
+      let rISCO = rS * 3.0;                   // Innermost Stable Circular Orbit
+
+      if (dist < 0.00001) {
+        res.shadowFactor = 0.0;
+        return res;
+      }
+
+      // General Relativistic Deflection Angle: alpha = (4 * G * M) / (c^2 * b)
+      let impactParam = max(dist, rS * 0.65);
+      let deflectionStrength = (2.2 * rS * rS) / (impactParam * impactParam + rS * 0.2);
+      let deflection = (delta / dist) * deflectionStrength * vec2f(1.0 / aspect, 1.0);
+      res.warpedUv = uv - deflection;
+
+      // Event Horizon & Photon Sphere Shadow Core
+      if (dist < rPhoton) {
+        let shadowFalloff = smoothstep(rS * 0.9, rPhoton, dist);
+        res.shadowFactor = shadowFalloff * 0.15;
+      }
+
+      // Photonic Einstein Ring Radiance
+      let einsteinDist = abs(dist - rPhoton * 1.25);
+      let einsteinRing = exp(-einsteinDist * (140.0 / max(0.01, rS))) * 0.65;
+      res.einsteinGlow += vec3f(0.95, 0.75, 0.45) * einsteinRing;
+
+      // Relativistic Doppler Beaming & Gravitational Redshift on Accretion Disk
+      let diskDist = abs(dist - rISCO * 0.95);
+      if (diskDist < rS * 2.8) {
+        // Disk angle relative to spin axis
+        let angle = atan2(delta.y, delta.x);
+        let velocityFactor = sqrt(clamp(rS / (2.0 * max(dist, rS * 0.5)), 0.0, 0.9));
+        
+        // Doppler factor: approaching side (negative delta.x for typical prograde) is blueshifted
+        let beta = velocityFactor * sin(angle + uniforms.time * 0.8 * bhSpin);
+        let dopplerFactor = pow(1.0 + beta * 0.7, 3.5);
+        
+        // Gravitational redshift: g = sqrt(1 - rS / r)
+        let gravRedshift = sqrt(clamp(1.0 - (rS / max(dist, rS * 1.05)), 0.05, 1.0));
+        
+        let diskIntensity = exp(-diskDist * (45.0 / max(0.01, rS))) * 0.45;
+        let blueShiftCol = vec3f(0.65, 0.85, 1.0);
+        let redShiftCol = vec3f(1.0, 0.42, 0.18);
+        let spectralCol = mix(redShiftCol, blueShiftCol, clamp(beta * 0.5 + 0.5, 0.0, 1.0));
+        
+        res.dopplerAccretion += spectralCol * diskIntensity * dopplerFactor * gravRedshift;
+      }
+
+      return res;
+    }
+
     // Native Dual Kawase Downsample Pass
-    // Marius Kawase 5-tap downsampling filter (1 center sample @ 4.0x + 4 corner samples @ 1.0x)
     fn dualKawaseDownsample(uv: vec2f, texSize: vec2f, iteration: f32) -> vec3f {
       let d = (vec2f(0.5) + vec2f(iteration)) / max(vec2f(1.0), texSize);
       
@@ -456,7 +563,6 @@ const buildWgslShaderSource = (): string => {
     }
 
     // Native Dual Kawase Upsample Pass
-    // Marius Kawase 8-tap upsampling filter (4 corners @ 2.0x + 4 axial samples @ 1.0x)
     fn dualKawaseUpsample(uv: vec2f, texSize: vec2f, iteration: f32) -> vec3f {
       let d = (vec2f(0.5) + vec2f(iteration)) / max(vec2f(1.0), texSize);
       
@@ -481,23 +587,68 @@ const buildWgslShaderSource = (): string => {
       
       let spread = blurStrength * 2.5;
       
-      // Cascaded Downsample Pyramid Passes (Levels 0, 1, 2, 3)
       let ds0 = dualKawaseDownsample(uv, texSize, 0.0 * spread);
       let ds1 = dualKawaseDownsample(uv, texSize, 1.2 * spread);
       let ds2 = dualKawaseDownsample(uv, texSize, 2.4 * spread);
       let ds3 = dualKawaseDownsample(uv, texSize, 3.8 * spread);
       
-      // Cascaded Upsample Pyramid Passes (Levels 3, 2, 1, 0)
       let us3 = dualKawaseUpsample(uv, texSize, 3.8 * spread);
       let us2 = dualKawaseUpsample(uv, texSize, 2.4 * spread);
       let us1 = dualKawaseUpsample(uv, texSize, 1.2 * spread);
       let us0 = dualKawaseUpsample(uv, texSize, 0.0 * spread);
       
-      // Combine multi-pyramid levels for silky-smooth physical Dual Kawase bloom & blur
       let downsampledGlow = (ds0 * 0.4) + (ds1 * 0.3) + (ds2 * 0.2) + (ds3 * 0.1);
       let upsampledGlow   = (us0 * 0.4) + (us1 * 0.3) + (us2 * 0.2) + (us3 * 0.1);
       
       return mix(downsampledGlow, upsampledGlow, 0.5);
+    }
+
+    // Cinematic Multi-Wavelength Spectral Chromatic Aberration
+    // Simulates continuous physical prism dispersion (Cauchy distribution) across cinema optics.
+    // Preserves crystal clarity in the central optical sweet spot, and produces smooth, rich,
+    // anamorphic spectral separation near the edges and extreme corners of the viewport.
+    fn sampleCinematicChromatic(uv: vec2f, texSize: vec2f, aspect: f32, focus: f32, strength: f32) -> vec3f {
+      let delta = uv - vec2f(0.5);
+      
+      // Aspect-corrected radial coordinates from optical center
+      let radialAspect = delta * vec2f(aspect, 1.0);
+      let r = length(radialAspect);
+      let maxR = length(vec2f(aspect * 0.5, 0.5));
+      let normR = clamp(r / max(0.001, maxR), 0.0, 1.5);
+      
+      // Optical deadzone & non-linear edge acceleration:
+      // Real cinema lenses maintain pristine focus in the center viewing field (normR < 0.22).
+      // Toward the perimeter and corners, transverse dispersion accelerates smoothly with a cubic curve.
+      let edgeCurve = pow(smoothstep(0.22, 1.0, normR), 2.2) * (1.0 + 0.65 * normR);
+      
+      // Total dispersion magnitude tuned for cinematic realism near screen borders
+      // Incorporates slight anamorphic horizontal stretch characteristic of widescreen cinema lenses
+      let baseOffset = (0.024 + 0.010 * focus) * strength * edgeCurve;
+      let dispVec = delta * vec2f(1.0 + 0.22 * abs(delta.x) * aspect, 1.0) * baseOffset;
+      
+      // 7-tap spectral integration (Deep Red -> Orange -> Yellow/Green -> Pure Green -> Cyan -> Blue -> Violet)
+      // Red wavelengths refract least (cast outward), Blue wavelengths refract most (cast inward).
+      let s0 = textureSampleLevel(uTexture, uSampler, clamp(uv + dispVec * 1.00, vec2f(0.0001), vec2f(0.9999)), 0.0).rgb; // Deep Red
+      let s1 = textureSampleLevel(uTexture, uSampler, clamp(uv + dispVec * 0.65, vec2f(0.0001), vec2f(0.9999)), 0.0).rgb; // Orange / Amber
+      let s2 = textureSampleLevel(uTexture, uSampler, clamp(uv + dispVec * 0.32, vec2f(0.0001), vec2f(0.9999)), 0.0).rgb; // Yellow / Lime
+      let s3 = textureSampleLevel(uTexture, uSampler, uv,                                                         0.0).rgb; // Pure Green (anchor)
+      let s4 = textureSampleLevel(uTexture, uSampler, clamp(uv - dispVec * 0.32, vec2f(0.0001), vec2f(0.9999)), 0.0).rgb; // Green / Cyan
+      let s5 = textureSampleLevel(uTexture, uSampler, clamp(uv - dispVec * 0.65, vec2f(0.0001), vec2f(0.9999)), 0.0).rgb; // Blue / Teal
+      let s6 = textureSampleLevel(uTexture, uSampler, clamp(uv - dispVec * 1.00, vec2f(0.0001), vec2f(0.9999)), 0.0).rgb; // Deep Violet / Blue
+      
+      // Spectral response weights per tap (conserves exact energy across channels)
+      let w0 = vec3f(0.85, 0.02, 0.08); // Deep Red
+      let w1 = vec3f(0.80, 0.38, 0.00); // Orange / Amber
+      let w2 = vec3f(0.45, 0.72, 0.00); // Yellow-Green
+      let w3 = vec3f(0.00, 1.00, 0.00); // Pure Green
+      let w4 = vec3f(0.00, 0.72, 0.45); // Cyan-Green
+      let w5 = vec3f(0.00, 0.38, 0.82); // Blue
+      let w6 = vec3f(0.35, 0.02, 1.00); // Deep Violet
+      
+      let sumW = w0 + w1 + w2 + w3 + w4 + w5 + w6;
+      let accum = s0 * w0 + s1 * w1 + s2 * w2 + s3 * w3 + s4 * w4 + s5 * w5 + s6 * w6;
+      
+      return accum / sumW;
     }
 
     @fragment
@@ -511,9 +662,41 @@ const buildWgslShaderSource = (): string => {
       var uv = inUV;
       let focus = clamp(uniforms.focusFactor, 0.0, 1.0);
 
+      // Evaluate General Relativistic Ray Deflection if enabled
+      var relativisticEinstein = vec3f(0.0);
+      var relativisticDoppler = vec3f(0.0);
+      var shadowMultiplier = 1.0;
+
+      if (uniforms.enableRelativity > 0.5 && uniforms.bhCount > 0.5) {
+        let bh1Pos = vec2f(uniforms.bh1X, uniforms.bh1Y);
+        let res1 = evaluateBlackHoleLensing(uv, aspect, bh1Pos, uniforms.bh1Radius, uniforms.bh1Spin, texSize);
+        uv = res1.warpedUv;
+        relativisticEinstein += res1.einsteinGlow;
+        relativisticDoppler += res1.dopplerAccretion;
+        shadowMultiplier = min(shadowMultiplier, res1.shadowFactor);
+
+        if (uniforms.bhCount > 1.5) {
+          let bh2Pos = vec2f(uniforms.bh2X, uniforms.bh2Y);
+          let res2 = evaluateBlackHoleLensing(uv, aspect, bh2Pos, uniforms.bh2Radius, uniforms.bh2Spin, texSize);
+          uv = res2.warpedUv;
+          relativisticEinstein += res2.einsteinGlow;
+          relativisticDoppler += res2.dopplerAccretion;
+          shadowMultiplier = min(shadowMultiplier, res2.shadowFactor);
+        }
+
+        if (uniforms.bhCount > 2.5) {
+          let bh3Pos = vec2f(uniforms.bh3X, uniforms.bh3Y);
+          let res3 = evaluateBlackHoleLensing(uv, aspect, bh3Pos, uniforms.bh3Radius, uniforms.bh3Spin, texSize);
+          uv = res3.warpedUv;
+          relativisticEinstein += res3.einsteinGlow;
+          relativisticDoppler += res3.dopplerAccretion;
+          shadowMultiplier = min(shadowMultiplier, res3.shadowFactor);
+        }
+      }
+
       let k = 0.065 * focus * uniforms.vignette;
       if (k > 0.0001) {
-        let centered = (inUV - vec2f(0.5)) * vec2f(aspect, 1.0);
+        let centered = (uv - vec2f(0.5)) * vec2f(aspect, 1.0);
         let r2 = dot(centered, centered);
         let scaleCompensate = 1.0 / (1.0 + k * 0.45);
         let warpedCentered = centered * scaleCompensate * (1.0 + k * r2);
@@ -523,29 +706,27 @@ const buildWgslShaderSource = (): string => {
 
       var sampledColor: vec3f;
       if (uniforms.chromaticAberration > 0.001) {
-        let centerDist = length(uv - vec2f(0.5));
-        let offset = (uv - vec2f(0.5)) * centerDist * (0.012 + 0.006 * focus) * uniforms.chromaticAberration;
-        let r = textureSampleLevel(uTexture, uSampler, uv - offset, 0.0).r;
-        let g = textureSampleLevel(uTexture, uSampler, uv, 0.0).g;
-        let b = textureSampleLevel(uTexture, uSampler, uv + offset, 0.0).b;
-        sampledColor = vec3f(r, g, b);
+        sampledColor = sampleCinematicChromatic(uv, texSize, aspect, focus, uniforms.chromaticAberration);
       } else {
         sampledColor = textureSampleLevel(uTexture, uSampler, uv, 0.0).rgb;
       }
 
       var upscaledColor = sampledColor;
-      if (uniforms.resScaleRatio < 0.99) {
+      if (uniforms.resScaleRatio < 0.99 && uniforms.chromaticAberration <= 0.001) {
         upscaledColor = fsrEasu(uv, texSize);
       }
 
       let baseColor = fsrRcas(upscaledColor, uv, texSize, uniforms.sharpness);
       let baseLuma = dot(baseColor, vec3f(0.2126, 0.7152, 0.0722));
 
-      var hdrColor = baseColor;
+      var hdrColor = baseColor * shadowMultiplier;
       if (baseLuma > 0.55) {
         let boost = pow((baseLuma - 0.55) / 0.45, 2.2) * 2.5;
         hdrColor += baseColor * boost;
       }
+
+      // Add Relativistic Einstein Ring Radiance & Doppler Beamed Accretion
+      hdrColor += relativisticEinstein + relativisticDoppler;
 
       // Native Dual Kawase WGSL Multi-Pass Filter Pass for Physical Bloom & Depth Blur
       if (uniforms.bloomStrength > 0.01) {
@@ -666,6 +847,13 @@ export default function SolarSystem() {
     }
     return true;
   });
+  const [enableUiCosmicSpecks, setEnableUiCosmicSpecks] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('enableUiCosmicSpecks');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
 
   const [enableVignette, setEnableVignette] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -735,6 +923,7 @@ hdrColor = mix(hdrColor, customSampledColor, 0.5);`;
     localStorage.setItem('enableChromatic', String(enableChromatic));
     localStorage.setItem('enableLensFlare', String(enableLensFlare));
     localStorage.setItem('enableCosmicDust', String(enableCosmicDust));
+    localStorage.setItem('enableUiCosmicSpecks', String(enableUiCosmicSpecks));
     localStorage.setItem('enableVignette', String(enableVignette));
     localStorage.setItem('aiAuraEffect', String(aiAuraEffect));
     localStorage.setItem('aiGridWave', String(aiGridWave));
@@ -742,7 +931,7 @@ hdrColor = mix(hdrColor, customSampledColor, 0.5);`;
     localStorage.setItem('aiNebulaPulse', String(aiNebulaPulse));
     localStorage.setItem('aiCustomShaderEnabled', String(aiCustomShaderEnabled));
     localStorage.setItem('aiCustomWgslCode', aiCustomWgslCode);
-  }, [enableBloom, enableChromatic, enableLensFlare, enableCosmicDust, enableVignette, aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode]);
+  }, [enableBloom, enableChromatic, enableLensFlare, enableCosmicDust, enableUiCosmicSpecks, enableVignette, aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode]);
 
   const [wasdSpeed, setWasdSpeed] = useState<number>(() => {
     if (typeof window !== 'undefined') {
@@ -849,14 +1038,57 @@ useEffect(() => {
   localStorage.setItem('useAI', String(useAI));
 }, [useAI]);
 
-  const [aiModel, setAiModel] = useState<'Gemini' | 'ChatGPT' | 'Claude' | 'Mistral' | 'Grok'>(() => {
+  const [aiModel, setAiModel] = useState<AiModelType>(() => {
     return (localStorage.getItem("aiModel") as any) || "Gemini";
   });
-  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem("geminiApiKey") || "");
+
+  const [aiApiKeys, setAiApiKeys] = useState<Record<AiModelType, string>>(() => {
+    let loaded: Partial<Record<AiModelType, string>> = {};
+    try {
+      const raw = localStorage.getItem("aiApiKeys");
+      if (raw) loaded = JSON.parse(raw);
+    } catch (e) {
+      console.error("Failed to parse aiApiKeys", e);
+    }
+    return {
+      Gemini: loaded.Gemini ?? (localStorage.getItem("geminiApiKey") || ""),
+      ChatGPT: loaded.ChatGPT ?? (localStorage.getItem("chatgptApiKey") || ""),
+      Claude: loaded.Claude ?? (localStorage.getItem("claudeApiKey") || ""),
+      Mistral: loaded.Mistral ?? (localStorage.getItem("mistralApiKey") || ""),
+      Grok: loaded.Grok ?? (localStorage.getItem("grokApiKey") || ""),
+    };
+  });
+
+  const [revealedKeyProviders, setRevealedKeyProviders] = useState<Record<string, boolean>>({});
+  const [aiKeySettingsTab, setAiKeySettingsTab] = useState<'active' | 'all'>('active');
 
   useEffect(() => {
     localStorage.setItem("aiModel", aiModel);
   }, [aiModel]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("aiApiKeys", JSON.stringify(aiApiKeys));
+      localStorage.setItem("geminiApiKey", aiApiKeys.Gemini || "");
+      localStorage.setItem("chatgptApiKey", aiApiKeys.ChatGPT || "");
+      localStorage.setItem("claudeApiKey", aiApiKeys.Claude || "");
+      localStorage.setItem("mistralApiKey", aiApiKeys.Mistral || "");
+      localStorage.setItem("grokApiKey", aiApiKeys.Grok || "");
+    } catch (e) {
+      console.error("Failed to save aiApiKeys", e);
+    }
+  }, [aiApiKeys]);
+
+  const activeApiKey = aiApiKeys[aiModel] || "";
+  const geminiKey = aiApiKeys.Gemini || "";
+
+  const setProviderApiKey = useCallback((provider: AiModelType, key: string) => {
+    setAiApiKeys(prev => ({ ...prev, [provider]: key }));
+  }, []);
+
+  const configuredKeysCount = useMemo(() => {
+    return (Object.keys(aiApiKeys) as AiModelType[]).filter(k => Boolean(aiApiKeys[k]?.trim())).length;
+  }, [aiApiKeys]);
 
   const [isGeminiSidePanelOpen, setIsGeminiSidePanelOpen] = useState(false);
   const [geminiSidePanelQuestion, setGeminiSidePanelQuestion] = useState<string | null>(null);
@@ -897,10 +1129,6 @@ useEffect(() => {
   const removeRecentSearch = (id: string) => {
     setRecentSearches(prev => prev.filter(x => x.id !== id));
   };
-
-  useEffect(() => {
-    localStorage.setItem("geminiApiKey", geminiKey);
-  }, [geminiKey]);
 
   const [tempUnit, setTempUnit] = useState<'C' | 'F' | 'K'>(() => {
     try {
@@ -1037,7 +1265,6 @@ useEffect(() => {
   const [activeTimeEvent, setActiveTimeEvent] = useState<any | null>(null);
   const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
   const [showHDModal, setShowHDModal] = useState(false);
-  const [showPerfModal, setShowPerfModal] = useState(false);
   
   // Settings State
   const [settingsTab, setSettingsTab] = useState<'graphics' | 'audio' | 'simulation' | 'preferences'>('graphics');
@@ -1092,6 +1319,60 @@ useEffect(() => {
     }
     return true;
   });
+
+  // Orbital Physics & Simulation Mode ('normalized' | 'keplerian')
+  const [orbitPhysicsMode, setOrbitPhysicsMode] = useState<'normalized' | 'keplerian'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('orbitPhysicsMode');
+      return (saved as any) || 'normalized';
+    }
+    return 'normalized';
+  });
+
+  // Lagrange Points & Contours Toggle
+  const [showLagrangePoints, setShowLagrangePoints] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('showLagrangePoints');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
+
+  // Solar Wind Particle Streams & Magnetospheres Toggle
+  const [showSolarWind, setShowSolarWind] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('showSolarWind');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
+
+  // WebGPU Relativistic Ray Deflection Shader Toggle
+  const [enableRelativisticLensing, setEnableRelativisticLensing] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('enableRelativisticLensing');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
+
+  // Space Sonification Volumes
+  const [resonanceVolume, setResonanceVolume] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('resonanceVolume');
+      return saved !== null ? parseFloat(saved) : 35;
+    }
+    return 35;
+  });
+
+  const [radioVolume, setRadioVolume] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('radioVolume');
+      return saved !== null ? parseFloat(saved) : 30;
+    }
+    return 30;
+  });
+
   const [actualFps, setActualFps] = useState(0);
   const fpsFrameCountRef = useRef(0);
   const fpsLastTimeRef = useRef(0);
@@ -1103,13 +1384,6 @@ useEffect(() => {
     return true;
   });
 
-  const [perfMode, setPerfMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('perfMode');
-      return saved !== null ? saved === 'true' : false;
-    }
-    return false;
-  });
   const [resScale, setResScale] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('resScale');
@@ -1151,23 +1425,17 @@ useEffect(() => {
     localStorage.setItem('showConstellations', String(showConstellations));
     localStorage.setItem('showSpacecraft', String(showSpacecraft));
     localStorage.setItem('hdMode', String(hdMode));
-    localStorage.setItem('perfMode', String(perfMode));
     localStorage.setItem('resScale', String(resScale));
     localStorage.setItem('uiAnimSpeed', String(uiAnimSpeed));
     localStorage.setItem('tapVolume', String(tapVolume));
     localStorage.setItem('ambienceVolume', String(ambienceVolume));
-  }, [speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, resScale, uiAnimSpeed, tapVolume, ambienceVolume]);
-
-
-  useEffect(() => {
-    if (perfMode) {
-      setUiAnimations(false);
-      document.documentElement.classList.add('perf-mode');
-    } else {
-      setUiAnimations(true);
-      document.documentElement.classList.remove('perf-mode');
-    }
-  }, [perfMode]);
+    localStorage.setItem('orbitPhysicsMode', orbitPhysicsMode);
+    localStorage.setItem('showLagrangePoints', String(showLagrangePoints));
+    localStorage.setItem('showSolarWind', String(showSolarWind));
+    localStorage.setItem('enableRelativisticLensing', String(enableRelativisticLensing));
+    localStorage.setItem('resonanceVolume', String(resonanceVolume));
+    localStorage.setItem('radioVolume', String(radioVolume));
+  }, [speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, resScale, uiAnimSpeed, tapVolume, ambienceVolume, orbitPhysicsMode, showLagrangePoints, showSolarWind, enableRelativisticLensing, resonanceVolume, radioVolume]);
   const [selectedPlanet, setSelectedPlanet] = useState<string | null>(null);
   const [hoveredPlanet, setHoveredPlanet] = useState<string | null>(null);
   
@@ -1244,7 +1512,7 @@ useEffect(() => {
       // Generate dynamic AI description
       try {
         const languageName = LANGUAGES.find(l => l.code === lang)?.name || 'English';
-        const systemInstruction = `You are a concise stellar guide. You provide extremely short (max 20 words) raw text descriptions in the requested language. Use proper grammar and punctuation. NEVER use formatting or emojis of any kind. No asterisks (*), no backticks (\`), NO emojis under any circumstances, NO exceptions. CRITICAL: You are providing a static celestial overview triggered by clicking a body. Do NOT output ACTION_TRIGGER, do NOT control the simulator, do NOT suggest actions. Only the Stellar Historian chat interface may use ACTION_TRIGGER; this overview must never include it.`;
+        const systemInstruction = `You are a concise stellar guide. You provide extremely short (max 20 words) raw text descriptions in the requested language. Use proper grammar and punctuation. NEVER use formatting or emojis of any kind. No asterisks (*), no backticks (\`), NO emojis under any circumstances, NO exceptions.`;
         const prompt = `Write a extremely concise 1-sentence description of the celestial body "${tName}" in ${languageName}. 
         Do not include its name in the sentence if possible. Just describe it. 
         STRICT REQUIREMENT: Use proper grammar, punctuation, and apostrophes (e.g. "Earth's").
@@ -1252,28 +1520,30 @@ useEffect(() => {
 
         let fullText = "";
 
-        // Server-side AI call
-        try {
-          const response = await fetch('/api/ai/description', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, systemInstruction, apiKey: geminiKey, provider: aiModel, aiModelName: aiModel }),
-            signal: descriptionAbortController.current.signal
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.text) {
-              fullText = String(data.text).replace(/ACTION_TRIGGER\s*:?\s*\{[\s\S]*?\}/gi, '').trim();
-              descriptionCacheRef.current[cacheKey] = fullText;
-              descriptionIsAiCacheRef.current[cacheKey] = true;
-              setAiDescription(fullText);
-              setIsAiGeneratedDesc(true);
+        // Server-side AI call (enforced key requirement)
+        if (activeApiKey && activeApiKey.trim()) {
+          try {
+            const response = await fetch('/api/ai/description', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt, systemInstruction, apiKey: activeApiKey.trim(), provider: aiModel, aiModelName: aiModel }),
+              signal: descriptionAbortController.current.signal
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data.text) {
+                fullText = data.text;
+                descriptionCacheRef.current[cacheKey] = fullText;
+                descriptionIsAiCacheRef.current[cacheKey] = true;
+                setAiDescription(fullText);
+                setIsAiGeneratedDesc(true);
+              }
             }
-          }
-        } catch (apiError: any) {
-          if (apiError.name !== 'AbortError') {
-            console.warn("AI Proxy Error:", apiError);
+          } catch (apiError: any) {
+            if (apiError.name !== 'AbortError') {
+              console.warn("AI Proxy Error:", apiError);
+            }
           }
         }
 
@@ -1697,7 +1967,6 @@ useEffect(() => {
         else if (name === 'showasteroids' || name === 'asteroids' || name === 'asteroidbelt') name = 'showAsteroids';
         else if (name === 'showconstellations' || name === 'constellations' || name === 'constellationlines') name = 'showConstellations';
         else if (name === 'showspacecraft' || name === 'spacecraft' || name === 'probes') name = 'showSpacecraft';
-        else if (name === 'perfmode' || name === 'performance' || name === 'performancemode') name = 'perfMode';
         else if (name === 'hdmode' || name === 'hd' || name === 'highdefinition') name = 'hdMode';
         else if (name === 'tempunit' || name === 'temperature' || name === 'temp') name = 'tempUnit';
         else if (name === 'speedmultiplier' || name === 'speed' || name === 'orbitspeed' || name === 'simulationspeed') name = 'speedMultiplier';
@@ -1722,15 +1991,18 @@ useEffect(() => {
         else if (name === 'ainebulapulse' || name === 'nebulapulse' || name === 'aurorashield') name = 'aiNebulaPulse';
         else if (name === 'aicustomshaderenabled' || name === 'customshader' || name === 'customaishader') name = 'aiCustomShaderEnabled';
         else if (name === 'aicustomwgslcode' || name === 'wgslcode' || name === 'customwgsl') name = 'aiCustomWgslCode';
+        else if (name === 'orbitphysicsmode' || name === 'orbitmode' || name === 'keplerian' || name === 'physicsmode') name = 'orbitPhysicsMode';
+        else if (name === 'showlagrangepoints' || name === 'lagrange' || name === 'lagrangepoints' || name === 'jacobi') name = 'showLagrangePoints';
+        else if (name === 'showsolarwind' || name === 'solarwind' || name === 'magnetosphere' || name === 'aurora') name = 'showSolarWind';
+        else if (name === 'enablerelativisticlensing' || name === 'relativisticlensing' || name === 'lensing' || name === 'einsteinrings') name = 'enableRelativisticLensing';
+        else if (name === 'resonancevolume' || name === 'resonancesonification' || name === 'orbitalresonance') name = 'resonanceVolume';
+        else if (name === 'radiovolume' || name === 'planetaryradio' || name === 'jovianradio') name = 'radioVolume';
 
         if (name === 'showOrbits') setShowOrbits(!!value);
         else if (name === 'showLabels') setShowLabels(!!value);
         else if (name === 'showAsteroids') setShowAsteroids(!!value);
         else if (name === 'showConstellations') setShowConstellations(!!value);
         else if (name === 'showSpacecraft') setShowSpacecraft(!!value);
-        else if (name === 'perfMode') {
-          setPerfMode(!!value);
-        }
         else if (name === 'hdMode') {
           setHdMode(!!value);
         }
@@ -1843,6 +2115,31 @@ useEffect(() => {
           setAiCustomWgslCode(value);
           setAiCustomShaderEnabled(true);
         }
+        else if (name === 'orbitPhysicsMode') {
+          const m = String(value).toLowerCase().trim();
+          if (m === 'keplerian' || m === 'accurate' || m === 'physics' || m === 'true') {
+            setOrbitPhysicsMode('keplerian');
+          } else {
+            setOrbitPhysicsMode('normalized');
+          }
+        }
+        else if (name === 'showLagrangePoints') {
+          setShowLagrangePoints(!!value);
+        }
+        else if (name === 'showSolarWind') {
+          setShowSolarWind(!!value);
+        }
+        else if (name === 'enableRelativisticLensing') {
+          setEnableRelativisticLensing(!!value);
+        }
+        else if (name === 'resonanceVolume') {
+          const v = parseFloat(value);
+          if (!isNaN(v)) setResonanceVolume(Math.max(0, Math.min(100, v)));
+        }
+        else if (name === 'radioVolume') {
+          const v = parseFloat(value);
+          if (!isNaN(v)) setRadioVolume(Math.max(0, Math.min(100, v)));
+        }
         break;
       }
       default:
@@ -1854,11 +2151,90 @@ useEffect(() => {
   const ambienceGainRef = useRef<GainNode | null>(null);
   const ambienceOscRefs = useRef<OscillatorNode[]>([]);
   const ambienceFilterRef = useRef<BiquadFilterNode | null>(null);
-  const configRef = useRef({ speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, selectedPlanet, hoveredPlanet, lang, deviceType, resScale, sharpenLevel, graphicsPreset, enableBloom, enableChromatic, enableLensFlare, enableCosmicDust, enableVignette, wasdSpeed, aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode, isModalOpen: isSettingsOpen || isSearchOpen || isAIResearcherOpen, isSearchOpen, isAIResearcherOpen });
+
+  // Physics Simulation & Sonification Engines
+  const solarWindEngineRef = useRef<SolarWindEngine>(new SolarWindEngine());
+  const spaceSonificationRef = useRef<SpaceSonificationEngine>(new SpaceSonificationEngine());
+
+  const configRef = useRef({
+    speedMultiplier,
+    fpsCap,
+    showLabels,
+    showOrbits,
+    showAsteroids,
+    showConstellations,
+    showSpacecraft,
+    hdMode,
+    selectedPlanet,
+    hoveredPlanet,
+    lang,
+    deviceType,
+    resScale,
+    sharpenLevel,
+    graphicsPreset,
+    enableBloom,
+    enableChromatic,
+    enableLensFlare,
+    enableCosmicDust,
+    enableVignette,
+    wasdSpeed,
+    aiAuraEffect,
+    aiGridWave,
+    aiPlasmaGlow,
+    aiNebulaPulse,
+    aiCustomShaderEnabled,
+    aiCustomWgslCode,
+    orbitPhysicsMode,
+    showLagrangePoints,
+    showSolarWind,
+    enableRelativisticLensing,
+    resonanceVolume,
+    radioVolume,
+    isModalOpen: isSettingsOpen || isSearchOpen || isAIResearcherOpen,
+    isSearchOpen,
+    isAIResearcherOpen
+  });
   
   useEffect(() => {
-    configRef.current = { speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, selectedPlanet, hoveredPlanet, lang, deviceType, resScale, sharpenLevel, graphicsPreset, enableBloom, enableChromatic, enableLensFlare, enableCosmicDust, enableVignette, wasdSpeed, aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode, isModalOpen: isSettingsOpen || isSearchOpen || isAIResearcherOpen, isSearchOpen, isAIResearcherOpen };
-  }, [speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, selectedPlanet, hoveredPlanet, lang, deviceType, resScale, sharpenLevel, graphicsPreset, enableBloom, enableChromatic, enableLensFlare, enableCosmicDust, enableVignette, wasdSpeed, aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode, isSettingsOpen, isSearchOpen, isAIResearcherOpen]);
+    configRef.current = {
+      speedMultiplier,
+      fpsCap,
+      showLabels,
+      showOrbits,
+      showAsteroids,
+      showConstellations,
+      showSpacecraft,
+      hdMode,
+      selectedPlanet,
+      hoveredPlanet,
+      lang,
+      deviceType,
+      resScale,
+      sharpenLevel,
+      graphicsPreset,
+      enableBloom,
+      enableChromatic,
+      enableLensFlare,
+      enableCosmicDust,
+      enableVignette,
+      wasdSpeed,
+      aiAuraEffect,
+      aiGridWave,
+      aiPlasmaGlow,
+      aiNebulaPulse,
+      aiCustomShaderEnabled,
+      aiCustomWgslCode,
+      orbitPhysicsMode,
+      showLagrangePoints,
+      showSolarWind,
+      enableRelativisticLensing,
+      resonanceVolume,
+      radioVolume,
+      isModalOpen: isSettingsOpen || isSearchOpen || isAIResearcherOpen,
+      isSearchOpen,
+      isAIResearcherOpen
+    };
+  }, [speedMultiplier, fpsCap, showLabels, showOrbits, showAsteroids, showConstellations, showSpacecraft, hdMode, selectedPlanet, hoveredPlanet, lang, deviceType, resScale, sharpenLevel, graphicsPreset, enableBloom, enableChromatic, enableLensFlare, enableCosmicDust, enableVignette, wasdSpeed, aiAuraEffect, aiGridWave, aiPlasmaGlow, aiNebulaPulse, aiCustomShaderEnabled, aiCustomWgslCode, orbitPhysicsMode, showLagrangePoints, showSolarWind, enableRelativisticLensing, resonanceVolume, radioVolume, isSettingsOpen, isSearchOpen, isAIResearcherOpen]);
 
   // WebGPU Visual FX & FSR Renderer Setup
   interface WebGPURenderer {
@@ -2281,7 +2657,7 @@ useEffect(() => {
         });
 
         const uniformBuffer = device.createBuffer({
-          size: 96,
+          size: 128,
           usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
@@ -2292,7 +2668,7 @@ useEffect(() => {
           pipeline,
           sampler,
           uniformBuffer,
-          uniformsArray: new Float32Array(16),
+          uniformsArray: new Float32Array(32),
           bindGroup: null,
           inputTexture: null,
           textureWidth: 0,
@@ -2387,6 +2763,14 @@ useEffect(() => {
     }
     const ctx = audioContext.current;
     if (ctx.state === 'suspended') ctx.resume();
+    uiSound.setAudioContext(ctx);
+
+    // Initialize physical space sonification engine
+    if (spaceSonificationRef.current && !spaceSonificationRef.current.isInitialized) {
+      spaceSonificationRef.current.init(ctx);
+      spaceSonificationRef.current.setResonanceVolume(resonanceVolume);
+      spaceSonificationRef.current.setRadioVolume(radioVolume);
+    }
 
     if (!ambienceGainRef.current) {
       // Create master gain for ambience
@@ -2470,6 +2854,18 @@ useEffect(() => {
     }
   }, [ambienceVolume]);
 
+  useEffect(() => {
+    if (spaceSonificationRef.current) {
+      spaceSonificationRef.current.setResonanceVolume(resonanceVolume);
+    }
+  }, [resonanceVolume]);
+
+  useEffect(() => {
+    if (spaceSonificationRef.current) {
+      spaceSonificationRef.current.setRadioVolume(radioVolume);
+    }
+  }, [radioVolume]);
+
   const handleGlobalClickForAudio = useCallback(() => {
     initAmbience();
     if (ambienceGainRef.current && audioContext.current) {
@@ -2489,33 +2885,49 @@ useEffect(() => {
     };
   }, [handleGlobalClickForAudio]);
 
-  const playTapSound = () => {
+  const playTapSound = useCallback((variant: UiTapVariant = 'standard') => {
     if (tapVolume <= 0) return;
     if (!audioContext.current) {
       audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     const ctx = audioContext.current;
-    if (ctx.state === 'suspended') ctx.resume();
-    
-    const osc = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(400, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.1);
-    
-    const maxGain = (tapVolume / 100) * 0.2;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    uiSound.setAudioContext(ctx);
+    uiSound.playTap(tapVolume, variant);
+  }, [tapVolume]);
 
-    gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(maxGain, ctx.currentTime + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-    
-    osc.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.1);
-  };
+  const playSliderDrag = useCallback((normalizedVal: number) => {
+    if (tapVolume <= 0) return;
+    if (!audioContext.current) {
+      audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioContext.current;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    uiSound.setAudioContext(ctx);
+    uiSound.playSliderDrag(normalizedVal, tapVolume);
+  }, [tapVolume]);
+
+  const playSliderGrab = useCallback((normalizedVal: number) => {
+    if (tapVolume <= 0) return;
+    if (!audioContext.current) {
+      audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioContext.current;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    uiSound.setAudioContext(ctx);
+    uiSound.playSliderGrab(normalizedVal, tapVolume);
+  }, [tapVolume]);
+
+  const playSliderRelease = useCallback(() => {
+    if (tapVolume <= 0) return;
+    if (!audioContext.current) {
+      audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioContext.current;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    uiSound.setAudioContext(ctx);
+    uiSound.playSliderRelease(tapVolume);
+  }, [tapVolume]);
   
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -2723,10 +3135,22 @@ useEffect(() => {
       // Update spacecrafts dynamically
       const earth = PLANETS.find(p => p.id === 'earth');
       const saturn = PLANETS.find(p => p.id === 'saturn');
-      const earthAngle = state.time * (earth?.speed || 0.01);
-      const earthDist = getDistance(earth?.distance || 180);
-      const ex = Math.cos(earthAngle) * earthDist;
-      const ey = Math.sin(earthAngle) * earthDist;
+      const isKeplerian = config.orbitPhysicsMode === 'keplerian';
+
+      let ex = 0;
+      let ey = 0;
+      let earthDist = getDistance(earth?.distance || 180);
+      if (earth) {
+        if (isKeplerian && earth.distance > 0) {
+          const kepE = getKeplerianOrbitalState('earth', state.time, earthDist, earth.speed);
+          ex = kepE.x;
+          ey = kepE.y;
+        } else {
+          const earthAngle = state.time * earth.speed;
+          ex = Math.cos(earthAngle) * earthDist;
+          ey = Math.sin(earthAngle) * earthDist;
+        }
+      }
 
       // Moon position
       const moon = earth?.moons?.find(m => m.id === 'moon');
@@ -2736,10 +3160,20 @@ useEffect(() => {
       const my = ey + Math.sin(moonAngle) * moonDist;
 
       // Saturn position
-      const satAngle = state.time * (saturn?.speed || 0.0009);
+      let sx = 0;
+      let sy = 0;
       const satDist = getDistance(saturn?.distance || 480);
-      const sx = Math.cos(satAngle) * satDist;
-      const sy = Math.sin(satAngle) * satDist;
+      if (saturn) {
+        if (isKeplerian && saturn.distance > 0) {
+          const kepS = getKeplerianOrbitalState('saturn', state.time, satDist, saturn.speed);
+          sx = kepS.x;
+          sy = kepS.y;
+        } else {
+          const satAngle = state.time * saturn.speed;
+          sx = Math.cos(satAngle) * satDist;
+          sy = Math.sin(satAngle) * satDist;
+        }
+      }
 
       SPACECRAFTS.forEach(sc => {
          if (sc.id === 'iss') {
@@ -2757,17 +3191,18 @@ useEffect(() => {
            (sc as any).heading = orbitAngle + Math.PI / 2;
          }
          else if (sc.id === 'apollo11') {
-           // Lunar Orbit - 25 units from Moon (Moon is at 135 units from Earth)
+           // Lunar Orbit - 25 units from Moon
            const orbitAngle = state.time * 0.012;
            sc.cx = mx + Math.cos(orbitAngle) * 25;
            sc.cy = my + Math.sin(orbitAngle) * 25;
            (sc as any).heading = orbitAngle + Math.PI / 2;
          }
          else if (sc.id === 'jwst') {
-           // Sun-Earth L2 Lagrange Point - 210 units beyond Earth on anti-sun vector
-           const l2Dist = earthDist + 210;
-           const l2x = Math.cos(earthAngle) * l2Dist;
-           const l2y = Math.sin(earthAngle) * l2Dist;
+           // Sun-Earth L2 Lagrange Point - dynamically updated via calculateLagrangePoints & getJwstHaloPosition
+           const antiSunAngle = Math.atan2(ey, ex);
+           const l2Dist = Math.hypot(ex, ey) + 210;
+           const l2x = Math.cos(antiSunAngle) * l2Dist;
+           const l2y = Math.sin(antiSunAngle) * l2Dist;
            const haloAngle = state.time * 0.003;
            sc.cx = l2x + Math.cos(haloAngle) * 28;
            sc.cy = l2y + Math.sin(haloAngle) * 18;
@@ -2842,7 +3277,7 @@ useEffect(() => {
       };
 
       // Draw Stars with Frustum Culling
-      const starLimit = config.perfMode ? 2000 : STARS.length;
+      const starLimit = STARS.length;
       for (let i = 0; i < starLimit; i++) {
         const star = STARS[i];
         if (star.x < minX || star.x > maxX || star.y < minY || star.y > maxY) continue;
@@ -2909,12 +3344,10 @@ useEffect(() => {
             const starSize = ((p.mag || 2) * 0.8) / zoom;
             
             // Star Glow
-            if (!config.perfMode) {
-              ctx.beginPath();
-              ctx.arc(starX, starY, starSize * 2, 0, Math.PI * 2);
-              ctx.fillStyle = `rgba(255, 255, 255, ${0.1 * (p.mag || 2)})`;
-              ctx.fill();
-            }
+            ctx.beginPath();
+            ctx.arc(starX, starY, starSize * 2, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.1 * (p.mag || 2)})`;
+            ctx.fill();
 
             // Star Body
             ctx.beginPath();
@@ -3178,6 +3611,47 @@ useEffect(() => {
           targetCtx.fillText(tName, bh.cx, bh.cy + bh.radius * 1.8 + (25 / zoom));
         }
       });
+
+      // 1. Calculate Sun-Earth and Earth-Moon Real-time Coordinates for Lagrange Points & JWST
+      const sunPos = { x: 0, y: 0 };
+      let earthCoords = { x: 0, y: 0 };
+      let moonCoords: { x: number; y: number } | null = null;
+
+      const earthPlanet = PLANETS.find(p => p.id === 'earth');
+      if (earthPlanet) {
+        if (config.orbitPhysicsMode === 'keplerian') {
+          const kepE = getKeplerianOrbitalState('earth', state.time, getDistance(earthPlanet.distance), earthPlanet.speed);
+          earthCoords = { x: kepE.x, y: kepE.y };
+        } else {
+          const eAngle = state.time * earthPlanet.speed;
+          const eDist = getDistance(earthPlanet.distance);
+          earthCoords = { x: Math.cos(eAngle) * eDist, y: Math.sin(eAngle) * eDist };
+        }
+
+        if (earthPlanet.moons && earthPlanet.moons.length > 0) {
+          const m = earthPlanet.moons[0];
+          const mAngle = state.time * m.speed;
+          const mDist = getDistance(m.distance);
+          moonCoords = { x: earthCoords.x + Math.cos(mAngle) * mDist, y: earthCoords.y + Math.sin(mAngle) * mDist };
+        }
+      }
+
+      const activeLagrange = calculateLagrangePoints(sunPos, earthCoords, moonCoords);
+
+      // Position JWST at Sun-Earth L2 Halo Orbit
+      const jwstSc = SPACECRAFTS.find(s => s.id === 'jwst');
+      const seL2 = activeLagrange.sunEarth.find(p => p.id === 'se-l2');
+      if (jwstSc && seL2) {
+        const halo = getJwstHaloPosition(seL2, sunPos, earthCoords, state.time);
+        jwstSc.cx = halo.x;
+        jwstSc.cy = halo.y;
+        (jwstSc as any).heading = halo.heading;
+      }
+
+      // Draw Lagrange Equipotential Contours and Markers
+      if (config.showLagrangePoints) {
+        drawGravitationalContours(ctx, sunPos, earthCoords, moonCoords, activeLagrange, zoom);
+      }
 
       // Draw Spacecrafts
       if (config.showSpacecraft) {
@@ -3639,10 +4113,18 @@ useEffect(() => {
 
         let lockedPos = null;
         for (const p of PLANETS) {
-          const pAngle = state.time * p.speed;
-          const pDistance = getDistance(p.distance);
-          const px = Math.cos(pAngle) * pDistance;
-          const py = Math.sin(pAngle) * pDistance;
+          let px = 0;
+          let py = 0;
+          if (config.orbitPhysicsMode === 'keplerian' && p.distance > 0) {
+            const kep = getKeplerianOrbitalState(p.id, state.time, getDistance(p.distance), p.speed);
+            px = kep.x;
+            py = kep.y;
+          } else {
+            const pAngle = state.time * p.speed;
+            const pDistance = getDistance(p.distance);
+            px = Math.cos(pAngle) * pDistance;
+            py = Math.sin(pAngle) * pDistance;
+          }
           if (p.id === state.lockedPlanetId) {
             lockedPos = { x: px, y: py };
             break;
@@ -3711,25 +4193,45 @@ useEffect(() => {
         state.isCameraLocked = false;
       }
 
-      // Draw Orbit Paths
+      // Draw Orbit Paths (Normalized circular or Physically Accurate Keplerian Ellipses)
       if (config.showOrbits) {
         PLANETS.forEach(p => {
           if (p.distance > 0) {
             const pDistance = getDistance(p.distance);
-            if (!isOrbitInFrustum(0, 0, pDistance)) return;
+            if (!isOrbitInFrustum(0, 0, pDistance * 1.3)) return;
             ctx.beginPath();
-            const orbitSides = config.perfMode ? 32 : (config.hdMode ? 128 : 64);
-            drawPolyPath(ctx, 0, 0, pDistance, orbitSides);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.lineWidth = 1 / zoom;
-            ctx.stroke();
+            if (config.orbitPhysicsMode === 'keplerian' && KEPLERIAN_DATA[p.id]) {
+              const kep = getKeplerianOrbitalState(p.id, 0, pDistance, p.speed);
+              ctx.save();
+              ctx.translate(0, 0);
+              ctx.rotate(kep.varpi);
+              ctx.ellipse(kep.focalOffset, 0, kep.a, kep.b, 0, 0, Math.PI * 2);
+              ctx.restore();
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+              ctx.lineWidth = 1 / zoom;
+              ctx.stroke();
+
+              // Perihelion / Aphelion indicators on zoom
+              if (zoom > 0.5) {
+                ctx.fillStyle = 'rgba(244, 63, 94, 0.5)';
+                ctx.beginPath(); ctx.arc(kep.perihelionX, kep.perihelionY, 1.8 / zoom, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = 'rgba(56, 189, 248, 0.5)';
+                ctx.beginPath(); ctx.arc(kep.aphelionX, kep.aphelionY, 1.8 / zoom, 0, Math.PI * 2); ctx.fill();
+              }
+            } else {
+              const orbitSides = config.hdMode ? 128 : 64;
+              drawPolyPath(ctx, 0, 0, pDistance, orbitSides);
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+              ctx.lineWidth = 1 / zoom;
+              ctx.stroke();
+            }
           }
         });
       }
 
       // Draw Asteroids with Frustum Culling
       if (config.showAsteroids) {
-        const asteroidLimit = config.perfMode ? 40 : ASTEROIDS.length;
+        const asteroidLimit = ASTEROIDS.length;
         for (let i = 0; i < asteroidLimit; i++) {
           const a = ASTEROIDS[i];
           const offsetAngle = a.angle + (state.time * a.speed);
@@ -3748,11 +4250,19 @@ useEffect(() => {
 
       // Draw Planets
       PLANETS.forEach(p => {
-        const pAngle = state.time * p.speed;
+        let px = 0;
+        let py = 0;
         const pDistance = getDistance(p.distance);
+        if (config.orbitPhysicsMode === 'keplerian' && p.distance > 0) {
+          const kep = getKeplerianOrbitalState(p.id, state.time, pDistance, p.speed);
+          px = kep.x;
+          py = kep.y;
+        } else {
+          const pAngle = state.time * p.speed;
+          px = Math.cos(pAngle) * pDistance;
+          py = Math.sin(pAngle) * pDistance;
+        }
         const pRadius = getRadius(p.radius, p.id === 'sun');
-        const px = Math.cos(pAngle) * pDistance;
-        const py = Math.sin(pAngle) * pDistance;
 
         const isPlanetVisible = inFrustum(px, py, pRadius * 3 + 100 / zoom);
 
@@ -3773,7 +4283,7 @@ useEffect(() => {
 
           // Planet Main Body
           ctx.beginPath();
-          const sides = config.perfMode ? Math.max(3, p.sides - 2) : (config.hdMode ? p.sides * 3 : p.sides);
+          const sides = config.hdMode ? p.sides * 3 : p.sides;
           drawPolyPath(ctx, px, py, pRadius, sides);
           ctx.fillStyle = p.color;
           ctx.fill();
@@ -3844,7 +4354,7 @@ useEffect(() => {
 
             if (config.showOrbits && isOrbitInFrustum(px, py, mDistance)) {
               ctx.beginPath();
-              const orbitSides = config.perfMode ? 24 : (config.hdMode ? 64 : 32);
+              const orbitSides = config.hdMode ? 64 : 32;
               drawPolyPath(ctx, px, py, mDistance, orbitSides);
               ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
               ctx.lineWidth = 1 / zoom;
@@ -3852,7 +4362,7 @@ useEffect(() => {
             }
 
             ctx.beginPath();
-            const mSides = config.perfMode ? Math.max(3, m.sides - 1) : (config.hdMode ? m.sides * 3 : m.sides);
+            const mSides = config.hdMode ? m.sides * 3 : m.sides;
             drawPolyPath(ctx, mx, my, mRadius, mSides);
             ctx.fillStyle = m.color;
             ctx.fill();
@@ -3892,6 +4402,155 @@ useEffect(() => {
         }
       });
 
+      // Update & Render Solar Wind Simulation & Magnetospheric Bow Shocks
+      if (config.showSolarWind) {
+        const magTargets: MagnetosphereTarget[] = [];
+        PLANETS.forEach(p => {
+          if (p.distance > 0) {
+            let px = 0;
+            let py = 0;
+            const pDistance = getDistance(p.distance);
+            if (config.orbitPhysicsMode === 'keplerian') {
+              const kep = getKeplerianOrbitalState(p.id, state.time, pDistance, p.speed);
+              px = kep.x;
+              py = kep.y;
+            } else {
+              const pAngle = state.time * p.speed;
+              px = Math.cos(pAngle) * pDistance;
+              py = Math.sin(pAngle) * pDistance;
+            }
+
+            const rad = getRadius(p.radius, false);
+            const auroral = 0.5 + 0.5 * Math.sin(state.time * 0.05 + (p.id === 'jupiter' ? 1 : p.id === 'saturn' ? 2 : 0));
+
+            if (p.id === 'earth') {
+              magTargets.push({
+                id: p.id,
+                name: p.name,
+                x: px,
+                y: py,
+                radius: rad,
+                type: 'intrinsic_dipole',
+                dipoleTilt: 0.19, // 11.5° magnetic dipole tilt
+                standoffRadius: rad * 2.8,
+                currentStandoff: rad * 2.8,
+                flaringParameter: 0.58,
+                magneticMomentColor: 'rgba(56, 189, 248, 0.25)',
+                auroralActivity: auroral,
+                tailLength: rad * 14.0
+              });
+            } else if (p.id === 'jupiter') {
+              magTargets.push({
+                id: p.id,
+                name: p.name,
+                x: px,
+                y: py,
+                radius: rad,
+                type: 'giant_magnetodisc',
+                dipoleTilt: -0.17, // -9.6° dipole tilt
+                standoffRadius: rad * 4.4,
+                currentStandoff: rad * 4.4,
+                flaringParameter: 0.68,
+                magneticMomentColor: 'rgba(168, 85, 247, 0.3)',
+                auroralActivity: auroral,
+                tailLength: rad * 28.0,
+                hasPlasmaTorus: true
+              });
+            } else if (p.id === 'saturn') {
+              magTargets.push({
+                id: p.id,
+                name: p.name,
+                x: px,
+                y: py,
+                radius: rad,
+                type: 'intrinsic_dipole',
+                dipoleTilt: 0.01, // Nearly perfectly aligned dipole (< 1°)
+                standoffRadius: rad * 3.4,
+                currentStandoff: rad * 3.4,
+                flaringParameter: 0.62,
+                magneticMomentColor: 'rgba(251, 191, 36, 0.25)',
+                auroralActivity: auroral,
+                tailLength: rad * 18.0,
+                hasPlasmaTorus: true,
+                hasRings: true
+              });
+            } else if (p.id === 'uranus') {
+              magTargets.push({
+                id: p.id,
+                name: p.name,
+                x: px,
+                y: py,
+                radius: rad,
+                type: 'intrinsic_dipole',
+                dipoleTilt: 1.03, // 59° extreme tilted dipole
+                standoffRadius: rad * 2.5,
+                currentStandoff: rad * 2.5,
+                flaringParameter: 0.55,
+                magneticMomentColor: 'rgba(45, 212, 191, 0.25)',
+                auroralActivity: auroral,
+                tailLength: rad * 12.0
+              });
+            } else if (p.id === 'neptune') {
+              magTargets.push({
+                id: p.id,
+                name: p.name,
+                x: px,
+                y: py,
+                radius: rad,
+                type: 'intrinsic_dipole',
+                dipoleTilt: 0.82, // 47° offset magnetic dipole
+                standoffRadius: rad * 2.4,
+                currentStandoff: rad * 2.4,
+                flaringParameter: 0.55,
+                magneticMomentColor: 'rgba(96, 165, 250, 0.25)',
+                auroralActivity: auroral,
+                tailLength: rad * 12.0
+              });
+            } else if (p.id === 'mars' || p.id === 'venus') {
+              magTargets.push({
+                id: p.id,
+                name: p.name,
+                x: px,
+                y: py,
+                radius: rad,
+                type: 'induced_ionosphere',
+                dipoleTilt: 0,
+                standoffRadius: rad * 1.35,
+                currentStandoff: rad * 1.35,
+                flaringParameter: 0.5,
+                magneticMomentColor: 'rgba(239, 68, 68, 0.2)',
+                auroralActivity: 0.1,
+                tailLength: rad * 6.0
+              });
+            } else if (p.id === 'mercury') {
+              magTargets.push({
+                id: p.id,
+                name: p.name,
+                x: px,
+                y: py,
+                radius: rad,
+                type: 'intrinsic_dipole',
+                dipoleTilt: 0.05,
+                standoffRadius: rad * 1.45,
+                currentStandoff: rad * 1.45,
+                flaringParameter: 0.5,
+                magneticMomentColor: 'rgba(168, 162, 158, 0.2)',
+                auroralActivity: 0.2,
+                tailLength: rad * 5.0
+              });
+            }
+          }
+        });
+
+        solarWindEngineRef.current.update(dt * config.speedMultiplier, magTargets);
+        solarWindEngineRef.current.render(ctx, magTargets, zoom);
+      }
+
+      // Update Physical Space Sonification Engine
+      if (spaceSonificationRef.current && spaceSonificationRef.current.isInitialized) {
+        spaceSonificationRef.current.update(state.time, config.selectedPlanet || state.lockedPlanetId);
+      }
+
       // Smoothly update focus factor for realistic fisheye lens distortion and edge vignette
       const isFocused = Boolean(config.selectedPlanet || state.lockedPlanetId);
       const targetFocus = isFocused ? 1.0 : 0.0;
@@ -3918,7 +4577,7 @@ useEffect(() => {
         ctx.restore();
       }
 
-      // Execute WebGPU FSR RCAS Upscaling Pass if active & available
+      // Execute WebGPU FSR RCAS Upscaling Pass & Relativistic Lensing if active & available
       if (isWebGpuActiveRef.current && webgpuRef.current && canvasRef.current) {
         const gpu = webgpuRef.current;
         const srcCanvas = canvasRef.current;
@@ -3964,14 +4623,16 @@ useEffect(() => {
             const sunNormY = 0.5 + (state.cameraY / window.innerHeight);
 
             const bloomFactor = config.enableBloom ? (config.graphicsPreset === 'ultra' ? 0.85 : config.graphicsPreset === 'high' ? 0.65 : 0.45) : 0.0;
-            const chromaticFactor = config.enableChromatic ? (config.graphicsPreset === 'ultra' ? 0.4 : 0.2) : 0.0;
+            const chromaticFactor = config.enableChromatic 
+              ? (config.graphicsPreset === 'ultra' ? 0.48 : config.graphicsPreset === 'high' ? 0.36 : config.graphicsPreset === 'medium' ? 0.26 : 0.32) 
+              : 0.0;
             const flareFactor = config.enableLensFlare ? (config.graphicsPreset === 'ultra' ? 0.35 : config.graphicsPreset === 'high' ? 0.25 : 0.18) : 0.0;
             const dustFactor = config.enableCosmicDust ? (config.graphicsPreset === 'ultra' ? 0.8 : 0.5) : 0.0;
             const vignetteFactor = config.enableVignette ? (config.graphicsPreset === 'ultra' ? 0.60 : 0.45) : 0.0;
 
             const effectiveSharpen = config.resScale >= 0.999 ? 0.0 : config.sharpenLevel;
 
-            const uArr = gpu.uniformsArray || new Float32Array(16);
+            const uArr = gpu.uniformsArray || new Float32Array(32);
             uArr[0] = effectiveSharpen;
             uArr[1] = srcW;
             uArr[2] = srcH;
@@ -3986,6 +4647,35 @@ useEffect(() => {
             uArr[11] = config.resScale;
             uArr[12] = state.zoom;
             uArr[13] = state.focusFactor;
+            uArr[14] = config.enableRelativisticLensing ? 1.0 : 0.0;
+            uArr[15] = BLACK_HOLES.length;
+
+            const bh1 = BLACK_HOLES[0];
+            const bh2 = BLACK_HOLES[1];
+            const bh3 = BLACK_HOLES[2];
+
+            const getBhScreenX = (bh: any) => 0.5 + ((bh.cx * state.zoom + state.cameraX) / window.innerWidth);
+            const getBhScreenY = (bh: any) => 0.5 + ((bh.cy * state.zoom + state.cameraY) / window.innerHeight);
+
+            if (bh1) {
+              uArr[16] = getBhScreenX(bh1);
+              uArr[17] = getBhScreenY(bh1);
+              uArr[18] = (bh1.radius * state.zoom) / Math.min(window.innerWidth, window.innerHeight);
+              uArr[19] = 0.94;
+            }
+            if (bh2) {
+              uArr[20] = getBhScreenX(bh2);
+              uArr[21] = getBhScreenY(bh2);
+              uArr[22] = (bh2.radius * state.zoom) / Math.min(window.innerWidth, window.innerHeight);
+              uArr[23] = 0.98;
+            }
+            if (bh3) {
+              uArr[24] = getBhScreenX(bh3);
+              uArr[25] = getBhScreenY(bh3);
+              uArr[26] = (bh3.radius * state.zoom) / Math.min(window.innerWidth, window.innerHeight);
+              uArr[27] = 0.88;
+            }
+
             gpu.device.queue.writeBuffer(gpu.uniformBuffer, 0, uArr);
 
             const commandEncoder = gpu.device.createCommandEncoder();
@@ -4062,6 +4752,96 @@ useEffect(() => {
     }
   };
 
+  // Unified hit test function that perfectly mirrors the render loop's coordinates in both Keplerian and Normalized modes
+  const findHitAtWorldCoords = (worldX: number, worldY: number) => {
+    const zoom = stateRef.current.zoom;
+    const time = stateRef.current.time;
+    const isKeplerian = configRef.current.orbitPhysicsMode === 'keplerian';
+    const hits: { id: string; dist: number; priority: number }[] = [];
+
+    // Pre-calculate celestial positions exactly identical to the render pipeline
+    const planetPositions = new Map<string, { px: number; py: number; radius: number }>();
+
+    for (const p of PLANETS) {
+      let px = 0;
+      let py = 0;
+      const pDistance = getDistance(p.distance);
+
+      if (isKeplerian && p.distance > 0) {
+        const kep = getKeplerianOrbitalState(p.id, time, pDistance, p.speed);
+        px = kep.x;
+        py = kep.y;
+      } else {
+        const pAngle = time * p.speed;
+        px = Math.cos(pAngle) * pDistance;
+        py = Math.sin(pAngle) * pDistance;
+      }
+
+      const pRadius = getRadius(p.radius, p.id === 'sun');
+      planetPositions.set(p.id, { px, py, radius: pRadius });
+
+      // Check Moons first with high priority (priority = 10) so clicking a moon near a giant planet selects the moon
+      if (p.moons) {
+        for (const m of p.moons) {
+          const mAngle = time * m.speed;
+          const mRadius = getRadius(m.radius);
+          const mDistance = getDistance(m.distance);
+          const mx = px + Math.cos(mAngle) * mDistance;
+          const my = py + Math.sin(mAngle) * mDistance;
+          const mDist = Math.hypot(worldX - mx, worldY - my);
+          // Razor-sharp hit radius: tight dynamic screen tolerance
+          const mHitRadius = Math.max(mRadius * 1.5, 14 / zoom);
+          if (mDist <= mHitRadius) {
+            hits.push({ id: m.id, dist: mDist, priority: 10 });
+          }
+        }
+      }
+
+      // Check Planet (priority = 5)
+      const dist = Math.hypot(worldX - px, worldY - py);
+      // For Sun and planets, allow precise selection scaled to their visual body + reasonable margin
+      const hitRadius = Math.max(pRadius * 1.25, 16 / zoom);
+      if (dist <= hitRadius) {
+        hits.push({ id: p.id, dist: dist, priority: 5 });
+      }
+    }
+
+    if (configRef.current.showSpacecraft) {
+      for (const sc of SPACECRAFTS) {
+        const dist = Math.hypot(worldX - sc.cx, worldY - sc.cy);
+        const scHitRadius = Math.max(sc.hitRadius * 1.2, 16 / zoom);
+        if (dist <= scHitRadius) {
+          hits.push({ id: sc.id, dist: dist, priority: 8 });
+        }
+      }
+    }
+
+    for (const bh of BLACK_HOLES) {
+      const dist = Math.hypot(worldX - bh.cx, worldY - bh.cy);
+      const bhHitRadius = Math.max(bh.hitRadius * 1.2, 22 / zoom);
+      if (dist <= bhHitRadius) {
+        hits.push({ id: bh.id, dist: dist, priority: 4 });
+      }
+    }
+
+    if (configRef.current.showConstellations) {
+      for (const c of CONSTELLATIONS) {
+        const dist = Math.hypot(worldX - c.cx, worldY - c.cy);
+        const cHitRadius = Math.max(c.hitRadius, 20 / zoom);
+        if (dist <= cHitRadius) {
+          hits.push({ id: c.id, dist: dist, priority: 1 });
+        }
+      }
+    }
+
+    if (hits.length > 0) {
+      // Sort first by priority (higher priority wins when overlapping), then by closest normalized distance
+      hits.sort((a, b) => b.priority - a.priority || a.dist - b.dist);
+      return hits[0].id;
+    }
+    return null;
+  };
+
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // Only primary left-click focuses celestial objects or deselects
     if (e.button !== 0) return;
@@ -4073,71 +4853,8 @@ useEffect(() => {
     const worldX = (x - window.innerWidth / 2 - stateRef.current.cameraX) / stateRef.current.zoom;
     const worldY = (y - window.innerHeight / 2 - stateRef.current.cameraY) / stateRef.current.zoom;
 
-    const hits = [];
-    
-    for (const p of PLANETS) {
-      const pAngle = stateRef.current.time * p.speed;
-      const pRadius = getRadius(p.radius, p.id === 'sun');
-      const pDistance = getDistance(p.distance);
-      const px = Math.cos(pAngle) * pDistance;
-      const py = Math.sin(pAngle) * pDistance;
-      
-      if (p.moons) {
-        for (const m of p.moons) {
-          const mAngle = stateRef.current.time * m.speed;
-          const mRadius = getRadius(m.radius);
-          const mDistance = getDistance(m.distance);
-          const mx = px + Math.cos(mAngle) * mDistance;
-          const my = py + Math.sin(mAngle) * mDistance;
-          const mDist = Math.sqrt(Math.pow(worldX - mx, 2) + Math.pow(worldY - my, 2));
-          const mHitRadius = Math.max(mRadius * 2, 12 / stateRef.current.zoom);
-          if (mDist <= mHitRadius) {
-            hits.push({ id: m.id, dist: mDist });
-          }
-        }
-      }
-      
-      const dist = Math.sqrt(Math.pow(worldX - px, 2) + Math.pow(worldY - py, 2));
-      const hitRadius = Math.max(pRadius, 10 / stateRef.current.zoom);
-      if (dist <= hitRadius) {
-        hits.push({ id: p.id, dist: dist });
-      }
-    }
+    const clickedPlanetId = findHitAtWorldCoords(worldX, worldY);
 
-    if (configRef.current.showConstellations) {
-      for (const c of CONSTELLATIONS) {
-        const cx = c.cx;
-        const cy = c.cy;
-        const dist = Math.sqrt(Math.pow(worldX - cx, 2) + Math.pow(worldY - cy, 2));
-        if (dist <= c.hitRadius) {
-          hits.push({ id: c.id, dist: dist });
-        }
-      }
-    }
-
-    for (const bh of BLACK_HOLES) {
-      const dist = Math.sqrt(Math.pow(worldX - bh.cx, 2) + Math.pow(worldY - bh.cy, 2));
-      if (dist <= bh.hitRadius) {
-        hits.push({ id: bh.id, dist: dist });
-      }
-    }
-
-    if (configRef.current.showSpacecraft) {
-      for (const sc of SPACECRAFTS) {
-        const dist = Math.sqrt(Math.pow(worldX - sc.cx, 2) + Math.pow(worldY - sc.cy, 2));
-        if (dist <= sc.hitRadius) {
-          hits.push({ id: sc.id, dist: dist });
-        }
-      }
-    }
-
-    let bestHitId = null;
-    if (hits.length > 0) {
-      hits.sort((a, b) => a.dist - b.dist);
-      bestHitId = hits[0].id;
-    }
-
-    let clickedPlanetId = bestHitId;
     if (clickedPlanetId) {
       const allBodies = [
         ...PLANETS.flatMap(p => [p, ...(p.moons || [])]),
@@ -4169,71 +4886,8 @@ useEffect(() => {
     const worldX = (x - window.innerWidth / 2 - stateRef.current.cameraX) / stateRef.current.zoom;
     const worldY = (y - window.innerHeight / 2 - stateRef.current.cameraY) / stateRef.current.zoom;
     
-    const hits = [];
-    
-    for (const p of PLANETS) {
-      const pAngle = stateRef.current.time * p.speed;
-      const pRadius = getRadius(p.radius, p.id === 'sun');
-      const pDistance = getDistance(p.distance);
-      const px = Math.cos(pAngle) * pDistance;
-      const py = Math.sin(pAngle) * pDistance;
-      
-      if (p.moons) {
-        for (const m of p.moons) {
-          const mAngle = stateRef.current.time * m.speed;
-          const mRadius = getRadius(m.radius);
-          const mDistance = getDistance(m.distance);
-          const mx = px + Math.cos(mAngle) * mDistance;
-          const my = py + Math.sin(mAngle) * mDistance;
-          const mDist = Math.sqrt(Math.pow(worldX - mx, 2) + Math.pow(worldY - my, 2));
-          const mHitRadius = Math.max(mRadius * 2, 12 / stateRef.current.zoom);
-          if (mDist <= mHitRadius) {
-            hits.push({ id: m.id, dist: mDist });
-          }
-        }
-      }
-      
-      const dist = Math.sqrt(Math.pow(worldX - px, 2) + Math.pow(worldY - py, 2));
-      const hitRadius = Math.max(pRadius, 10 / stateRef.current.zoom);
-      if (dist <= hitRadius) {
-        hits.push({ id: p.id, dist: dist });
-      }
-    }
+    const hoveredId = findHitAtWorldCoords(worldX, worldY);
 
-    if (configRef.current.showConstellations) {
-      for (const c of CONSTELLATIONS) {
-        const cx = c.cx;
-        const cy = c.cy;
-        const dist = Math.sqrt(Math.pow(worldX - cx, 2) + Math.pow(worldY - cy, 2));
-        if (dist <= c.hitRadius) {
-          hits.push({ id: c.id, dist: dist });
-        }
-      }
-    }
-
-    for (const bh of BLACK_HOLES) {
-      const dist = Math.sqrt(Math.pow(worldX - bh.cx, 2) + Math.pow(worldY - bh.cy, 2));
-      if (dist <= bh.hitRadius) {
-        hits.push({ id: bh.id, dist: dist });
-      }
-    }
-
-    if (configRef.current.showSpacecraft) {
-      for (const sc of SPACECRAFTS) {
-        const dist = Math.sqrt(Math.pow(worldX - sc.cx, 2) + Math.pow(worldY - sc.cy, 2));
-        if (dist <= sc.hitRadius) {
-          hits.push({ id: sc.id, dist: dist });
-        }
-      }
-    }
-
-    let bestHitId = null;
-    if (hits.length > 0) {
-      hits.sort((a, b) => a.dist - b.dist);
-      bestHitId = hits[0].id;
-    }
-
-    let hoveredId = bestHitId;
     if (hoveredId !== hoveredPlanet) {
         setHoveredPlanet(hoveredId);
         if(hoveredId) e.currentTarget.style.cursor = 'pointer';
@@ -4474,17 +5128,6 @@ useEffect(() => {
         action: () => { setShowSpacecraft(!showSpacecraft); playTapSound(); }
       },
       {
-        id: 'set-perf',
-        category: 'Settings',
-        title: 'Performance Mode',
-        subtitle: 'Optimize framerate by lowering overall graphical fidelity',
-        keywords: ['performance', 'fps', 'speed', 'fast', 'lag', 'optimize', 'low'],
-        icon: <Gauge className="w-4 h-4 text-slate-400" />,
-        badge: perfMode ? 'ON' : 'OFF',
-        badgeType: perfMode ? 'active' : 'inactive',
-        action: () => { if (!perfMode) setShowPerfModal(true); else setPerfMode(false); playTapSound(); }
-      },
-      {
         id: 'set-preset',
         category: 'Settings',
         title: 'Graphics Quality Preset',
@@ -4565,6 +5208,17 @@ useEffect(() => {
         action: () => { setEnableCosmicDust(!enableCosmicDust); setGraphicsPreset('custom'); playTapSound(); }
       },
       {
+        id: 'set-ui-dust',
+        category: 'Settings',
+        title: 'UI Cosmic Specks',
+        subtitle: 'Toggle floating cosmic specks over the UI',
+        keywords: ['ui', 'dust', 'specks', 'cosmic', 'particles', 'interface'],
+        icon: <Sparkles className="w-4 h-4 text-slate-400" />,
+        badge: enableUiCosmicSpecks ? 'ON' : 'OFF',
+        badgeType: enableUiCosmicSpecks ? 'active' : 'inactive',
+        action: () => { setEnableUiCosmicSpecks(!enableUiCosmicSpecks); setGraphicsPreset('custom'); playTapSound(); }
+      },
+      {
         id: 'set-vignette',
         category: 'Settings',
         title: 'Cinematic Vignette Effect',
@@ -4585,6 +5239,75 @@ useEffect(() => {
         badge: useAI ? 'ON' : 'OFF',
         badgeType: useAI ? 'active' : 'inactive',
         action: () => { setUseAI(!useAI); playTapSound(); }
+      },
+      {
+        id: 'set-orbit-physics',
+        category: 'Settings',
+        title: 'Orbital Mechanics Engine',
+        subtitle: `Switch between Normalized Clean & Keplerian Accurate (Current: ${orbitPhysicsMode === 'keplerian' ? 'Keplerian' : 'Normalized'})`,
+        keywords: ['orbit', 'physics', 'kepler', 'keplerian', 'eccentricity', 'anomaly', 'accurate', 'clean', 'normalized', 'newton'],
+        icon: <Orbit className="w-4 h-4 text-slate-400" />,
+        badge: orbitPhysicsMode === 'keplerian' ? 'KEPLERIAN' : 'NORMALIZED',
+        badgeType: orbitPhysicsMode === 'keplerian' ? 'active' : 'inactive',
+        action: () => {
+          setOrbitPhysicsMode(prev => (prev === 'normalized' ? 'keplerian' : 'normalized'));
+          playTapSound();
+        }
+      },
+      {
+        id: 'set-lagrange',
+        category: 'Settings',
+        title: 'Lagrange Equilibrium Contours (L1–L5)',
+        subtitle: 'Gravitational potential contours & JWST halo orbit',
+        keywords: ['lagrange', 'l1', 'l2', 'l3', 'l4', 'l5', 'halo', 'orbit', 'jwst', 'gravity', 'contour', 'jacobi'],
+        icon: <Target className="w-4 h-4 text-slate-400" />,
+        badge: showLagrangePoints ? 'ON' : 'OFF',
+        badgeType: showLagrangePoints ? 'active' : 'inactive',
+        action: () => { setShowLagrangePoints(!showLagrangePoints); playTapSound(); }
+      },
+      {
+        id: 'set-solar-wind',
+        category: 'Settings',
+        title: 'Solar Wind & Planetary Magnetospheres',
+        subtitle: 'High-energy particle streams, bow shocks & polar auroral rings',
+        keywords: ['solar', 'wind', 'sun', 'particles', 'magnetosphere', 'aurora', 'magnetic', 'compression', 'bow', 'shock'],
+        icon: <Zap className="w-4 h-4 text-slate-400" />,
+        badge: showSolarWind ? 'ON' : 'OFF',
+        badgeType: showSolarWind ? 'active' : 'inactive',
+        action: () => { setShowSolarWind(!showSolarWind); playTapSound(); }
+      },
+      {
+        id: 'set-relativistic',
+        category: 'Settings',
+        title: 'General Relativistic Ray Deflection',
+        subtitle: 'WebGPU WGSL Einstein rings, Doppler beaming & gravitational redshift',
+        keywords: ['relativistic', 'relativity', 'einstein', 'ring', 'black', 'hole', 'lensing', 'deflection', 'doppler', 'redshift', 'wgsl', 'webgpu'],
+        icon: <Radio className="w-4 h-4 text-slate-400" />,
+        badge: enableRelativisticLensing ? 'ON' : 'OFF',
+        badgeType: enableRelativisticLensing ? 'active' : 'inactive',
+        action: () => { setEnableRelativisticLensing(!enableRelativisticLensing); playTapSound(); }
+      },
+      {
+        id: 'set-resonance-audio',
+        category: 'Settings',
+        title: 'Orbital Resonance Sonification (Laplace 4:2:1)',
+        subtitle: `Harmonic audio frequency synthesis for Io, Europa, Ganymede (Volume: ${resonanceVolume}%)`,
+        keywords: ['resonance', 'sonification', 'audio', 'sound', 'harmonic', 'laplace', 'jupiter', 'moons', 'io', 'europa', 'ganymede'],
+        icon: <Volume2 className="w-4 h-4 text-slate-400" />,
+        badge: `${resonanceVolume}%`,
+        badgeType: 'info',
+        action: () => { setSettingsTab('audio'); setIsSearchOpen(false); setIsSettingsOpen(true); playTapSound(); }
+      },
+      {
+        id: 'set-radio-audio',
+        category: 'Settings',
+        title: 'Planetary Radio Emissions (Jovian/Auroral)',
+        subtitle: `FM auroral hiss & kilometric radio bursts (Volume: ${radioVolume}%)`,
+        keywords: ['radio', 'emissions', 'jovian', 'auroral', 'hiss', 'decametric', 'jupiter', 'sound', 'audio'],
+        icon: <Headphones className="w-4 h-4 text-slate-400" />,
+        badge: `${radioVolume}%`,
+        badgeType: 'info',
+        action: () => { setSettingsTab('audio'); setIsSearchOpen(false); setIsSettingsOpen(true); playTapSound(); }
       }
     );
 
@@ -4765,7 +5488,7 @@ useEffect(() => {
     }
 
     return items;
-  }, [t, showOrbits, showLabels, showAsteroids, showConstellations, showSpacecraft, hdMode, perfMode, graphicsPreset, fpsCap, tempUnit, lang, enableBloom, enableLensFlare, enableCosmicDust, enableVignette, useAI, speedMultiplier === 0, wasdSpeed, aiModel]);
+  }, [t, showOrbits, showLabels, showAsteroids, showConstellations, showSpacecraft, hdMode, graphicsPreset, fpsCap, tempUnit, lang, enableBloom, enableLensFlare, enableCosmicDust, enableVignette, useAI, speedMultiplier === 0, wasdSpeed, aiModel]);
 
   const fpsPresetOptions: DropdownOption[] = useMemo(() => [
     { value: 60, label: '60 FPS' },
@@ -5081,21 +5804,7 @@ useEffect(() => {
 
   return (
     <MotionConfig transition={uiAnimations ? { duration: 0.3 / uiAnimSpeed } : { duration: 0 }}>
-      <div className={`relative w-full h-full bg-slate-900 overflow-hidden font-sans ${perfMode ? 'perf-mode' : ''}`}>
-        <style dangerouslySetInnerHTML={{ __html: `
-          .perf-mode .backdrop-blur-sm, 
-          .perf-mode .backdrop-blur-md, 
-          .perf-mode .backdrop-blur-lg, 
-          .perf-mode .backdrop-blur-xl, 
-          .perf-mode .backdrop-blur-2xl, 
-          .perf-mode .backdrop-blur-3xl {
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-          }
-          .perf-mode * {
-            text-shadow: none !important;
-          }
-        ` }} />
+      <div className="relative w-full h-full bg-slate-900 overflow-hidden font-sans">
         {/* SVG filter for sharpening lower resolution canvas */}
         {(() => {
           const effectiveSharpen = resScale >= 0.999 ? 0 : sharpenLevel;
@@ -5212,7 +5921,7 @@ useEffect(() => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: uiAnimations ? 0.2 / uiAnimSpeed : 0 }}
-              className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm pointer-events-auto"
+              className="absolute inset-0 bg-slate-950/60 pointer-events-auto overflow-hidden"
               onClick={() => setIsSettingsOpen(false)}
             />
             <motion.div
@@ -5229,7 +5938,8 @@ useEffect(() => {
               }
               className="panel relative z-10 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] h-[85vh] overflow-hidden flex flex-col dual-kawase-glass glass-specular border border-white/20 pointer-events-auto"
             >
-              <div className="w-full h-full flex flex-col overflow-hidden">
+              <CosmicDust enabled={enableUiCosmicSpecks} />
+              <div className="w-full h-full flex flex-col overflow-hidden relative z-10">
                 
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 bg-slate-950/20 border-b border-white/10 shrink-0">
@@ -5383,20 +6093,18 @@ useEffect(() => {
                                           {isFsrOff ? 'Off (0%)' : `${Math.round(currentSharpen * 100)}%`}
                                         </span>
                                       </div>
-                                      <input
-                                        type="range"
-                                        min="0"
-                                        max="1"
-                                        step="0.05"
+                                      <TactileSlider
+                                        min={0}
+                                        max={1}
+                                        step={0.01}
                                         disabled={isFsrOff}
                                         value={currentSharpen}
-                                        onChange={(e) => {
-                                          setSharpenLevel(parseFloat(e.target.value));
+                                        volumePercent={tapVolume}
+                                        onChange={(val) => {
+                                          setSharpenLevel(val);
                                           setGraphicsPreset('custom');
                                         }}
-                                        className={`w-full h-1.5 bg-slate-800 rounded-lg appearance-none accent-slate-400 focus:outline-none ${
-                                          isFsrOff ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-                                        }`}
+                                        className={isFsrOff ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
                                       />
                                     </div>
                                   </div>
@@ -5415,27 +6123,32 @@ useEffect(() => {
                           <Toggle 
                             label="Celestial Bloom & Radiance" 
                             checked={enableBloom} 
-                            onChange={(v) => { playTapSound(); setEnableBloom(v); setGraphicsPreset('custom'); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setEnableBloom(v); setGraphicsPreset('custom'); }} 
                           />
                           <Toggle 
                             label="Anamorphic Sun Flare" 
                             checked={enableLensFlare} 
-                            onChange={(v) => { playTapSound(); setEnableLensFlare(v); setGraphicsPreset('custom'); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setEnableLensFlare(v); setGraphicsPreset('custom'); }} 
                           />
                           <Toggle 
                             label="Interstellar Dust Particles" 
                             checked={enableCosmicDust} 
-                            onChange={(v) => { playTapSound(); setEnableCosmicDust(v); setGraphicsPreset('custom'); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setEnableCosmicDust(v); setGraphicsPreset('custom'); }} 
+                          />
+                          <Toggle 
+                            label="UI Cosmic Specks" 
+                            checked={enableUiCosmicSpecks} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setEnableUiCosmicSpecks(v); setGraphicsPreset('custom'); }} 
                           />
                           <Toggle 
                             label="Cinematic Vignette Effect" 
                             checked={enableVignette} 
-                            onChange={(v) => { playTapSound(); setEnableVignette(v); setGraphicsPreset('custom'); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setEnableVignette(v); setGraphicsPreset('custom'); }} 
                           />
                           <Toggle 
                             label="Chromatic Aberration" 
                             checked={enableChromatic} 
-                            onChange={(v) => { playTapSound(); setEnableChromatic(v); setGraphicsPreset('custom'); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setEnableChromatic(v); setGraphicsPreset('custom'); }} 
                           />
                         </div>
                       </div>
@@ -5450,27 +6163,42 @@ useEffect(() => {
                           <Toggle 
                             label="Orbit Trajectories" 
                             checked={showOrbits} 
-                            onChange={(v) => { playTapSound(); setShowOrbits(v); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowOrbits(v); }} 
                           />
                           <Toggle 
                             label="Celestial Name Labels" 
                             checked={showLabels} 
-                            onChange={(v) => { playTapSound(); setShowLabels(v); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowLabels(v); }} 
                           />
                           <Toggle 
                             label="Asteroid Belt & Comets" 
                             checked={showAsteroids} 
-                            onChange={(v) => { playTapSound(); setShowAsteroids(v); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowAsteroids(v); }} 
                           />
                           <Toggle 
                             label="Constellation Star Grid" 
                             checked={showConstellations} 
-                            onChange={(v) => { playTapSound(); setShowConstellations(v); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowConstellations(v); }} 
                           />
                           <Toggle 
                             label="Spacecraft & Mission Probes" 
                             checked={showSpacecraft} 
-                            onChange={(v) => { playTapSound(); setShowSpacecraft(v); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowSpacecraft(v); }} 
+                          />
+                          <Toggle 
+                            label="Lagrange Contours (L1–L5) & JWST Halo" 
+                            checked={showLagrangePoints} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowLagrangePoints(v); }} 
+                          />
+                          <Toggle 
+                            label="Solar Wind & Magnetospheres" 
+                            checked={showSolarWind} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowSolarWind(v); }} 
+                          />
+                          <Toggle 
+                            label="Relativistic Ray Deflection (WebGPU)" 
+                            checked={enableRelativisticLensing} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setEnableRelativisticLensing(v); }} 
                           />
                         </div>
                       </div>
@@ -5503,21 +6231,19 @@ useEffect(() => {
                               {ambienceVolume}%
                             </span>
                           </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            step="1"
+                          <TactileSlider
+                            min={0}
+                            max={100}
+                            step={1}
                             value={ambienceVolume}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
+                            volumePercent={tapVolume}
+                            onChange={(val) => {
                               setAmbienceVolume(val);
                               // Trigger start if not already started
                               if (val > 0 && !ambienceGainRef.current) {
                                 initAmbience();
                               }
                             }}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400 focus:outline-none"
                           />
                         </div>
 
@@ -5525,29 +6251,81 @@ useEffect(() => {
                           <div className="flex justify-between items-center text-xs">
                             <div className="flex items-center gap-1.5 font-medium text-slate-300">
                               <Headphones className="w-3.5 h-3.5 text-slate-400" />
-                              <span>UI Tap Sound Volume</span>
+                              <span>Tactile UI Audio (Taps & Drag Ticks)</span>
                             </div>
                             <span className="font-mono text-slate-400 bg-slate-500/10 border border-slate-700/50 px-2 py-0.5 rounded text-[11px] font-semibold">
                               {tapVolume}%
                             </span>
                           </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            step="1"
+                          <TactileSlider
+                            min={0}
+                            max={100}
+                            step={1}
                             value={tapVolume}
-                            onChange={(e) => {
-                              setTapVolume(parseFloat(e.target.value));
+                            volumePercent={tapVolume}
+                            onChange={(val) => {
+                              setTapVolume(val);
                             }}
-                            onMouseUp={() => {
-                              // Play a tiny bit to preview
-                              playTapSound();
+                            onPointerUp={() => {
+                              // Play preview tap on release
+                              playTapSound('standard');
                             }}
-                            onTouchEnd={() => {
-                              playTapSound();
+                          />
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-slate-800/60">
+                          <div className="flex justify-between items-center text-xs">
+                            <div className="flex items-center gap-1.5 font-medium text-slate-300">
+                              <Sparkles className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Orbital Resonance Sonification (Laplace 4:2:1)</span>
+                            </div>
+                            <span className="font-mono text-slate-400 bg-slate-500/10 border border-slate-700/50 px-2 py-0.5 rounded text-[11px] font-semibold">
+                              {resonanceVolume}%
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Harmonic sonification of the Galilean moons (Io, Europa, Ganymede) coupled to planetary orbital frequencies.
+                          </p>
+                          <TactileSlider
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={resonanceVolume}
+                            volumePercent={tapVolume}
+                            onChange={(val) => {
+                              setResonanceVolume(val);
+                              if (val > 0 && !audioContext.current) {
+                                initAmbience();
+                              }
                             }}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-slate-800/60">
+                          <div className="flex justify-between items-center text-xs">
+                            <div className="flex items-center gap-1.5 font-medium text-slate-300">
+                              <Radio className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Planetary Radio Emissions (Jovian/Auroral)</span>
+                            </div>
+                            <span className="font-mono text-slate-400 bg-slate-500/10 border border-slate-700/50 px-2 py-0.5 rounded text-[11px] font-semibold">
+                              {radioVolume}%
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Synthesized decametric radio bursts and auroral chorus emissions from gas giants and solar wind bow shocks.
+                          </p>
+                          <TactileSlider
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={radioVolume}
+                            volumePercent={tapVolume}
+                            onChange={(val) => {
+                              setRadioVolume(val);
+                              if (val > 0 && !audioContext.current) {
+                                initAmbience();
+                              }
+                            }}
                           />
                         </div>
                       </div>
@@ -5565,27 +6343,8 @@ useEffect(() => {
                           <label className="text-xs font-semibold uppercase tracking-wider">Simulation Controls & Engine Dynamics</label>
                         </div>
                         <p className="text-xs text-slate-400 leading-relaxed bg-slate-950/30 p-3 rounded-xl border border-slate-800/60">
-                          Precision controls for orbital simulation clock, WASD camera mechanics, target frame rate caps, and hardware performance modes.
+                          Precision controls for orbital simulation clock, WASD camera mechanics, and target frame rate caps.
                         </p>
-                      </div>
-
-                      {/* Performance Modes */}
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <Activity className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <label className="text-xs font-semibold uppercase tracking-wider">Performance & Display</label>
-                        </div>
-                        <div className="space-y-2 bg-slate-950/30 p-3 rounded-xl border border-slate-800/60">
-                          <Toggle 
-                            label="Performance Mode" 
-                            checked={perfMode} 
-                            onChange={(v) => {
-                              playTapSound();
-                              if (v) setShowPerfModal(true);
-                              else setPerfMode(false);
-                            }} 
-                          />
-                        </div>
                       </div>
 
                       {/* Framerate Cap */}
@@ -5605,13 +6364,89 @@ useEffect(() => {
                             value={[60, 75, 90, 120, 144, 240, 360, 540].includes(fpsCap) ? fpsCap : 60}
                             options={fpsPresetOptions}
                             onChange={(val) => {
-                              playTapSound();
                               const num = typeof val === 'number' ? val : parseInt(val, 10);
                               setFpsCap(num);
                             }}
                             fontMono
                             uiAnimations={uiAnimations}
                             uiAnimSpeed={uiAnimSpeed}
+                            playTapSound={playTapSound}
+                            volumePercent={tapVolume}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Orbital Mechanics & Physics Mode */}
+                      <div className="space-y-3 pt-2 border-t border-slate-800/80">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-slate-400">
+                            <Orbit className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <label className="text-xs font-semibold uppercase tracking-wider">Orbital Mechanics Engine</label>
+                          </div>
+                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-500/10 border border-slate-700/50 text-slate-300 uppercase">
+                            {orbitPhysicsMode}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 bg-slate-950/30 p-1.5 rounded-xl border border-slate-800/60">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playTapSound();
+                              setOrbitPhysicsMode('normalized');
+                            }}
+                            className={`flex flex-col items-center justify-center p-2.5 rounded-lg text-xs font-medium transition-all ${
+                              orbitPhysicsMode === 'normalized'
+                                ? 'bg-slate-800 text-slate-100 border border-slate-700/80 shadow-sm'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                            }`}
+                          >
+                            <span className="font-semibold">Normalized Clean</span>
+                            <span className="text-[10px] text-slate-400 mt-0.5">Circular spacing & constant velocity</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playTapSound();
+                              setOrbitPhysicsMode('keplerian');
+                            }}
+                            className={`flex flex-col items-center justify-center p-2.5 rounded-lg text-xs font-medium transition-all ${
+                              orbitPhysicsMode === 'keplerian'
+                                ? 'bg-slate-800 text-slate-100 border border-slate-700/80 shadow-sm'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                            }`}
+                          >
+                            <span className="font-semibold">Keplerian Accurate</span>
+                            <span className="text-[10px] text-slate-400 mt-0.5">Kepler eq, true anomaly & perihelia</span>
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-400 bg-slate-950/20 p-2.5 rounded-lg border border-slate-800/40 leading-relaxed">
+                          Keplerian mode computes true anomaly via Newton-Raphson iteration on Kepler&apos;s equation <span className="font-mono text-slate-300">M = E - e·sin(E)</span>. Orbits accelerate at perihelion and decelerate at aphelion.
+                        </p>
+                      </div>
+
+                      {/* Astrophysics Phenomena & Overlays */}
+                      <div className="space-y-3 pt-2 border-t border-slate-800/80">
+                        <div className="flex items-center gap-1.5 text-slate-400">
+                          <Compass className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <label className="text-xs font-semibold uppercase tracking-wider">Astrophysics Overlays & Dynamics</label>
+                        </div>
+                        <div className="space-y-2 bg-slate-950/30 p-3 rounded-xl border border-slate-800/60">
+                          <Toggle 
+                            label="Lagrange Contours (L1–L5) & JWST Halo" 
+                            checked={showLagrangePoints} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowLagrangePoints(v); }} 
+                          />
+                          <Toggle 
+                            label="Solar Wind & Magnetospheric Bow Shocks" 
+                            checked={showSolarWind} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setShowSolarWind(v); }} 
+                          />
+                          <Toggle 
+                            label="Relativistic Ray Deflection (WebGPU WGSL)" 
+                            checked={enableRelativisticLensing} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setEnableRelativisticLensing(v); }} 
                           />
                         </div>
                       </div>
@@ -5632,14 +6467,13 @@ useEffect(() => {
                               {speedMultiplier.toFixed(1)}x
                             </span>
                           </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max="5"
-                            step="0.1"
+                          <TactileSlider
+                            min={0}
+                            max={5}
+                            step={0.1}
                             value={speedMultiplier}
-                            onChange={(e) => setSpeedMultiplier(parseFloat(e.target.value))}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400 focus:outline-none"
+                            volumePercent={tapVolume}
+                            onChange={(val) => setSpeedMultiplier(val)}
                           />
                         </div>
 
@@ -5653,14 +6487,13 @@ useEffect(() => {
                               {uiAnimSpeed.toFixed(1)}x
                             </span>
                           </div>
-                          <input
-                            type="range"
-                            min="0.2"
-                            max="3"
-                            step="0.1"
+                          <TactileSlider
+                            min={0.2}
+                            max={3}
+                            step={0.1}
                             value={uiAnimSpeed}
-                            onChange={(e) => setUiAnimSpeed(parseFloat(e.target.value))}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400 focus:outline-none"
+                            volumePercent={tapVolume}
+                            onChange={(val) => setUiAnimSpeed(val)}
                           />
                         </div>
 
@@ -5674,14 +6507,13 @@ useEffect(() => {
                               {Math.round(wasdSpeed)} px/frame
                             </span>
                           </div>
-                          <input
-                            type="range"
-                            min="2"
-                            max="40"
-                            step="1"
+                          <TactileSlider
+                            min={2}
+                            max={40}
+                            step={1}
                             value={wasdSpeed}
-                            onChange={(e) => setWasdSpeed(parseFloat(e.target.value))}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-slate-400 focus:outline-none"
+                            volumePercent={tapVolume}
+                            onChange={(val) => setWasdSpeed(val)}
                           />
                           <p className="text-[11px] text-slate-400 flex items-center gap-1 flex-wrap pt-0.5">
                             <span>Use</span>
@@ -5756,7 +6588,7 @@ useEffect(() => {
                           <Toggle 
                             label="Enable AI Stellar Guide" 
                             checked={useAI} 
-                            onChange={(v) => { playTapSound(); setUseAI(v); }} 
+                            onChange={(v) => { playTapSound(v ? 'toggle-on' : 'toggle-off'); setUseAI(v); }} 
                           />
                           {useAI && (
                             <div className="pt-2.5 border-t border-slate-800/60 space-y-3">
@@ -5772,29 +6604,218 @@ useEffect(() => {
                                   value={aiModel}
                                   options={aiModelOptions}
                                   onChange={(val) => {
-                                    playTapSound();
                                     setAiModel(val);
                                   }}
                                   uiAnimations={uiAnimations}
                                   uiAnimSpeed={uiAnimSpeed}
+                                  playTapSound={playTapSound}
+                                  volumePercent={tapVolume}
                                 />
                               </div>
 
-                              {/* Custom API Key Input */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs text-slate-400 font-medium flex justify-between items-center">
-                                  <span>Custom {aiModel} API Key</span>
-                                  <span className="text-slate-400 text-[10px] font-mono bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-700/60">
-                                    {geminiKey ? 'Custom Key Set' : 'Optional (Default Fallback)'}
-                                  </span>
-                                </label>
-                                <input
-                                  type="password"
-                                  placeholder={`Enter custom ${aiModel} API key...`}
-                                  value={geminiKey}
-                                  onChange={(e) => setGeminiKey(e.target.value)}
-                                  className="w-full bg-slate-800/60 border border-slate-700/80 text-slate-200 text-xs rounded-xl px-3.5 py-2 outline-none focus:ring-2 focus:ring-slate-500/50 placeholder:text-slate-500 font-mono transition-all hover:bg-slate-800/80"
-                                />
+                              {/* Isolated Custom API Keys Section */}
+                              <div className="space-y-2 pt-2 border-t border-slate-800/60">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
+                                    <Key className="w-3.5 h-3.5 text-slate-400" />
+                                    <span>Isolated LLM API Keys</span>
+                                  </div>
+                                  {/* Tab switch between Active model and All models */}
+                                  <div className="flex items-center bg-slate-900/90 p-0.5 rounded-lg border border-slate-800">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        playTapSound('subtle');
+                                        setAiKeySettingsTab('active');
+                                      }}
+                                      className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all ${
+                                        aiKeySettingsTab === 'active'
+                                          ? 'bg-slate-700/80 text-white shadow-sm'
+                                          : 'text-slate-400 hover:text-slate-200'
+                                      }`}
+                                    >
+                                      {aiModel}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        playTapSound('subtle');
+                                        setAiKeySettingsTab('all');
+                                      }}
+                                      className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all flex items-center gap-1 ${
+                                        aiKeySettingsTab === 'all'
+                                          ? 'bg-slate-700/80 text-white shadow-sm'
+                                          : 'text-slate-400 hover:text-slate-200'
+                                      }`}
+                                    >
+                                      <span>All Models</span>
+                                      <span className="text-[9px] font-mono px-1 rounded bg-slate-800 text-slate-300">
+                                        {configuredKeysCount}/5
+                                      </span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {aiKeySettingsTab === 'active' ? (
+                                  /* Active Model Dedicated Key Input */
+                                  <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800/80 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-semibold text-slate-200">{aiModel} API Key</span>
+                                        <span className="text-[10px] text-slate-400 font-mono">({AI_PROVIDERS_META[aiModel]?.provider})</span>
+                                      </div>
+                                      {aiApiKeys[aiModel]?.trim() ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded-md">
+                                          <Check className="w-3 h-3" />
+                                          Key Configured
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold tracking-wider text-amber-400 bg-amber-950/60 border border-amber-800/50 px-2 py-0.5 rounded-md">
+                                          <AlertCircle className="w-3 h-3 text-amber-400" />
+                                          MANDATORY
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="relative flex items-center">
+                                      <input
+                                        type={revealedKeyProviders[aiModel] ? 'text' : 'password'}
+                                        placeholder="Input API key here..."
+                                        value={aiApiKeys[aiModel] || ''}
+                                        onChange={(e) => setProviderApiKey(aiModel, e.target.value)}
+                                        autoComplete="new-password"
+                                        spellCheck={false}
+                                        className="w-full bg-slate-800/80 border border-slate-700/80 text-slate-200 text-xs rounded-xl pl-3 pr-16 py-2 outline-none focus:ring-2 focus:ring-slate-500/50 placeholder:text-slate-500 font-mono transition-all hover:bg-slate-800"
+                                      />
+                                      <div className="absolute right-1.5 flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            playTapSound('subtle');
+                                            setRevealedKeyProviders(prev => ({ ...prev, [aiModel]: !prev[aiModel] }));
+                                          }}
+                                          className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 transition-colors"
+                                          title={revealedKeyProviders[aiModel] ? 'Hide Key' : 'Show Key'}
+                                        >
+                                          {revealedKeyProviders[aiModel] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                        </button>
+                                        {Boolean(aiApiKeys[aiModel]?.trim()) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              playTapSound('toggle-off');
+                                              setProviderApiKey(aiModel, '');
+                                            }}
+                                            className="p-1 rounded-lg text-rose-400/80 hover:text-rose-300 hover:bg-rose-950/50 transition-colors"
+                                            title="Clear Key"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 leading-tight">
+                                      {AI_PROVIDERS_META[aiModel]?.description}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  /* All Models Isolated Keys List */
+                                  <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {(Object.keys(AI_PROVIDERS_META) as AiModelType[]).map((provId) => {
+                                      const meta = AI_PROVIDERS_META[provId];
+                                      const isSelected = aiModel === provId;
+                                      const hasKey = Boolean(aiApiKeys[provId]?.trim());
+                                      const isRevealed = Boolean(revealedKeyProviders[provId]);
+
+                                      return (
+                                        <div
+                                          key={provId}
+                                          className={`p-2.5 rounded-xl border transition-all ${
+                                            isSelected
+                                              ? 'bg-slate-900/90 border-slate-600/70 shadow-sm'
+                                              : 'bg-slate-900/40 border-slate-800/60 hover:border-slate-700/60'
+                                          }`}
+                                        >
+                                          <div className="flex items-center justify-between mb-1.5">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="text-xs font-semibold text-slate-200">{meta.name}</span>
+                                              <span className="text-[10px] text-slate-400 font-mono">({meta.provider})</span>
+                                              {isSelected && (
+                                                <span className="inline-flex items-center gap-1 text-[9px] font-mono font-medium text-slate-300 bg-slate-800/90 border border-slate-700/80 px-1.5 py-0.5 rounded-md">
+                                                  <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                                                  Active
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                              {hasKey ? (
+                                                <span className="inline-flex items-center gap-1 text-[9px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-800/40 px-1.5 py-0.5 rounded">
+                                                  <Check className="w-2.5 h-2.5 text-emerald-400" />
+                                                  Configured
+                                                </span>
+                                              ) : (
+                                                <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold tracking-wider text-amber-400/90 bg-amber-950/40 border border-amber-800/30 px-1.5 py-0.5 rounded">
+                                                  <AlertCircle className="w-2.5 h-2.5 text-amber-400" />
+                                                  MANDATORY
+                                                </span>
+                                              )}
+                                              {!isSelected && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    playTapSound('snap');
+                                                    setAiModel(provId);
+                                                  }}
+                                                  className="text-[10px] text-slate-300 hover:text-white px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700/60 transition-colors"
+                                                >
+                                                  Select
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          <div className="relative flex items-center">
+                                            <input
+                                              type={isRevealed ? 'text' : 'password'}
+                                              placeholder="Input API key here..."
+                                              value={aiApiKeys[provId] || ''}
+                                              onChange={(e) => setProviderApiKey(provId, e.target.value)}
+                                              autoComplete="new-password"
+                                              spellCheck={false}
+                                              className="w-full bg-slate-800/70 border border-slate-700/70 text-slate-200 text-xs rounded-lg pl-2.5 pr-14 py-1.5 outline-none focus:ring-1 focus:ring-slate-400 placeholder:text-slate-500 font-mono transition-all hover:bg-slate-800"
+                                            />
+                                            <div className="absolute right-1 flex items-center gap-0.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  playTapSound('subtle');
+                                                  setRevealedKeyProviders(prev => ({ ...prev, [provId]: !prev[provId] }));
+                                                }}
+                                                className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 transition-colors"
+                                                title={isRevealed ? 'Hide' : 'Reveal'}
+                                              >
+                                                {isRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                              </button>
+                                              {hasKey && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    playTapSound('toggle-off');
+                                                    setProviderApiKey(provId, '');
+                                                  }}
+                                                  className="p-1 rounded text-rose-400/80 hover:text-rose-300 hover:bg-rose-950/50 transition-colors"
+                                                  title="Clear Key"
+                                                >
+                                                  <Trash2 className="w-3 h-3" />
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
@@ -5846,7 +6867,7 @@ useEffect(() => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: uiAnimations ? 0.2 / uiAnimSpeed : 0 }}
-              className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm pointer-events-auto"
+              className="absolute inset-0 bg-slate-950/60 pointer-events-auto"
               onClick={() => setIsSearchOpen(false)}
             />
             <motion.div
@@ -5863,6 +6884,7 @@ useEffect(() => {
               }
               className="panel relative z-10 rounded-2xl shadow-2xl w-full max-w-lg md:max-w-5xl lg:max-w-6xl h-[88vh] max-h-[760px] overflow-hidden flex flex-col md:flex-row dual-kawase-glass glass-specular border border-white/20 pointer-events-auto"
             >
+              <CosmicDust enabled={enableUiCosmicSpecks} />
               {/* Left Column: Search Bar, Filters & Results */}
               <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden border-b md:border-b-0 md:border-r border-white/10">
               {/* Search Header Bar with Dual Kawase Glass */}
@@ -6121,10 +7143,11 @@ useEffect(() => {
                             options={compareBodyOptions}
                             onChange={(val) => {
                               setCompareLeftId(val);
-                              playTapSound();
                             }}
                             uiAnimations={uiAnimations}
                             uiAnimSpeed={uiAnimSpeed}
+                            playTapSound={playTapSound}
+                            volumePercent={tapVolume}
                           />
                         </div>
 
@@ -6135,10 +7158,11 @@ useEffect(() => {
                             options={compareBodyOptions}
                             onChange={(val) => {
                               setCompareRightId(val);
-                              playTapSound();
                             }}
                             uiAnimations={uiAnimations}
                             uiAnimSpeed={uiAnimSpeed}
+                            playTapSound={playTapSound}
+                            volumePercent={tapVolume}
                           />
                         </div>
                       </div>
@@ -6250,10 +7274,11 @@ useEffect(() => {
                             options={distanceBodyOptions}
                             onChange={(val) => {
                               setCalcSourceId(val);
-                              playTapSound();
                             }}
                             uiAnimations={uiAnimations}
                             uiAnimSpeed={uiAnimSpeed}
+                            playTapSound={playTapSound}
+                            volumePercent={tapVolume}
                           />
                         </div>
 
@@ -6264,10 +7289,11 @@ useEffect(() => {
                             options={distanceBodyOptions}
                             onChange={(val) => {
                               setCalcTargetId(val);
-                              playTapSound();
                             }}
                             uiAnimations={uiAnimations}
                             uiAnimSpeed={uiAnimSpeed}
+                            playTapSound={playTapSound}
+                            volumePercent={tapVolume}
                           />
                         </div>
                       </div>
@@ -6872,22 +7898,6 @@ useEffect(() => {
         uiAnimSpeed={uiAnimSpeed}
       />
 
-      <PerfModeModal 
-        isOpen={showPerfModal} 
-        onClose={() => setShowPerfModal(false)} 
-        onConfirm={() => { 
-          setPerfMode(true); 
-          setUiAnimations(false);
-          setShowPerfModal(false); 
-        }} 
-        playTapSound={playTapSound} 
-        title={t.ui_perf_mode_info}
-        desc={t.ui_perf_mode_desc}
-        btnCancel={t.ui_cancel}
-        btnConfirm={t.ui_enable_perf_mode}
-        uiAnimations={uiAnimations}
-        uiAnimSpeed={uiAnimSpeed}
-      />
 
       {/* Time Travel Event Info Overlay (Top Left) */}
       <AnimatePresence>
@@ -6984,8 +7994,9 @@ useEffect(() => {
               }
               return (
                 <GlassPanel lightColor={planet.color} className="p-5 rounded-2xl border border-slate-700/60 shadow-2xl overflow-hidden relative max-h-[70vh] flex flex-col">
+                   <CosmicDust enabled={enableUiCosmicSpecks} />
                    <div className="absolute top-0 left-0 w-full h-1" style={{ backgroundColor: planet.color }}></div>
-                   <div className="flex items-start justify-between mb-2 mt-1 shrink-0">
+                   <div className="flex items-start justify-between mb-2 mt-1 shrink-0 relative z-10">
                      <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2 mt-0.5" style={{ color: planet.color }}>
                         <span>{tName}</span>
                         {useAI && isAiGeneratedDesc && (
@@ -7055,6 +8066,7 @@ useEffect(() => {
 
               return (
                 <GlassPanel lightColor={body.color} className="flex-1 rounded-2xl border border-slate-700/60 shadow-2xl overflow-hidden relative flex flex-col">
+                  <CosmicDust enabled={enableUiCosmicSpecks} />
                   {/* Header */}
                   <div className="p-5 pb-4 border-b border-slate-900/60 bg-slate-950/20 relative z-10 shrink-0">
                     <div className="absolute top-0 left-0 w-full h-1" style={{ backgroundColor: body.color }}></div>
@@ -7078,7 +8090,7 @@ useEffect(() => {
                   </div>
 
                   {/* Scrollable Content */}
-                  <div className="p-5 overflow-y-auto flex-1 space-y-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                  <div className="p-5 overflow-y-auto flex-1 space-y-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent relative z-10">
                     {/* Key Stats */}
                     {(details.mass || details.temp || details.gravity) && (
                       <div className="grid grid-cols-1 gap-3">
@@ -7170,7 +8182,8 @@ useEffect(() => {
         currentPlanet={selectedPlanet}
         uiAnimations={uiAnimations}
         uiAnimSpeed={uiAnimSpeed}
-        apiKey={geminiKey}
+        apiKey={activeApiKey}
+        geminiApiKey={aiApiKeys.Gemini}
         aiModelName={aiModel}
         initialQuestion={aiResearcherQuestion}
         onExecuteAction={handleAIAction}
@@ -7181,7 +8194,6 @@ useEffect(() => {
           showAsteroids,
           showConstellations,
           showSpacecraft,
-          perfMode,
           hdMode,
           tempUnit,
           lang,
@@ -7193,6 +8205,7 @@ useEffect(() => {
           enableChromatic,
           enableLensFlare,
           enableCosmicDust,
+          enableUiCosmicSpecks,
           enableVignette,
           fpsCap,
           wasdSpeed
@@ -7216,7 +8229,7 @@ useEffect(() => {
         currentPlanet={selectedPlanet}
         uiAnimations={uiAnimations}
         uiAnimSpeed={uiAnimSpeed}
-        apiKey={geminiKey}
+        apiKey={activeApiKey}
         initialQuestion={geminiSidePanelQuestion}
         onExecuteAction={handleAIAction}
         currentSettings={{
@@ -7226,7 +8239,6 @@ useEffect(() => {
           showAsteroids,
           showConstellations,
           showSpacecraft,
-          perfMode,
           hdMode,
           tempUnit,
           lang,
@@ -7238,6 +8250,7 @@ useEffect(() => {
           enableChromatic,
           enableLensFlare,
           enableCosmicDust,
+          enableUiCosmicSpecks,
           enableVignette,
           fpsCap,
           wasdSpeed
