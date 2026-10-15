@@ -105,6 +105,7 @@ interface AIResearcherProps {
   initialQuestion?: string | null;
   onExecuteAction?: (action: any) => void;
   aiModelName?: string;
+  aiProviderModel?: string;
   resolveBodyDetails?: (id: string) => BodyCardData | undefined;
   currentSettings?: {
     speedMultiplier: number;
@@ -144,6 +145,7 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
   geminiApiKey = "",
   initialQuestion = null,
   onExecuteAction,
+  aiProviderModel,
   resolveBodyDetails,
   currentSettings,
   aiModelName = "Gemini"
@@ -1455,6 +1457,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
           systemInstruction,
           apiKey: apiKey.trim(),
           provider: aiModelName,
+          model: aiProviderModel,
           webSearch: isWebSearch
         })
       });

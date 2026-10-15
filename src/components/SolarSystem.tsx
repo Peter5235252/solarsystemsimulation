@@ -188,7 +188,7 @@ export const AI_PROVIDERS_META: Record<AiModelType, AiProviderMeta> = {
     id: 'ChatGPT',
     name: 'ChatGPT',
     provider: 'OpenAI',
-    badge: 'GPT-5.6 / GPT-4o-mini',
+    badge: 'GPT-6.1 Sol / GPT-6 Luna',
     keyPlaceholder: 'Input API key here...',
     keyPrefixHint: '',
     description: 'Requires personal OpenAI API key with chat completions permissions.',
@@ -197,7 +197,7 @@ export const AI_PROVIDERS_META: Record<AiModelType, AiProviderMeta> = {
     id: 'Claude',
     name: 'Claude',
     provider: 'Anthropic',
-    badge: 'Claude 3.5 Sonnet / Haiku',
+    badge: 'Claude Sonnet 5.5 / Haiku 5.5',
     keyPlaceholder: 'Input API key here...',
     keyPrefixHint: '',
     description: 'Requires Anthropic API key for Messages API endpoints.',
@@ -215,12 +215,42 @@ export const AI_PROVIDERS_META: Record<AiModelType, AiProviderMeta> = {
     id: 'Grok',
     name: 'Grok',
     provider: 'SpaceXSI',
-    badge: 'Grok 4.6 / Grok Beta',
+    badge: 'Grok 4.7',
     keyPlaceholder: 'Input API key here...',
     keyPrefixHint: '',
     description: 'Requires SpaceXSI API key for Grok endpoints.',
   },
 };
+
+export interface ProviderModelOption {
+  id: string;
+  label: string;
+}
+
+/** Selectable models per provider (Oct 2026). First entry is the default. */
+export const AI_PROVIDER_MODELS: Record<AiModelType, ProviderModelOption[]> = {
+  Gemini: [{ id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' }],
+  ChatGPT: [
+    { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol (Default)' },
+    { id: 'gpt-6-luna', label: 'GPT-6 Luna' },
+  ],
+  Claude: [
+    { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (Default)' },
+    { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
+  ],
+  Mistral: [{ id: 'mistral-small-latest', label: 'Mistral Small' }],
+  Grok: [{ id: 'grok-4.7', label: 'Grok 4.7' }],
+};
+
+export function defaultProviderModel(provider: AiModelType): string {
+  return AI_PROVIDER_MODELS[provider]?.[0]?.id ?? '';
+}
+
+export function resolveProviderModel(provider: AiModelType, stored?: string): string {
+  const options = AI_PROVIDER_MODELS[provider] ?? [];
+  if (stored && options.some(o => o.id === stored)) return stored;
+  return options[0]?.id ?? '';
+}
 
 const getRadius = (r: number, isStar = false) => {
   if (isStar) return r;
@@ -1091,9 +1121,34 @@ useEffect(() => {
   const [revealedKeyProviders, setRevealedKeyProviders] = useState<Record<string, boolean>>({});
   const [aiKeySettingsTab, setAiKeySettingsTab] = useState<'active' | 'all'>('active');
 
+  const [aiProviderModel, setAiProviderModel] = useState<Record<AiModelType, string>>(() => {
+    let loaded: Partial<Record<AiModelType, string>> = {};
+    try {
+      const raw = localStorage.getItem("aiProviderModels");
+      if (raw) loaded = JSON.parse(raw);
+    } catch (e) {
+      console.error("Failed to parse aiProviderModels", e);
+    }
+    return {
+      Gemini: resolveProviderModel('Gemini', loaded.Gemini),
+      ChatGPT: resolveProviderModel('ChatGPT', loaded.ChatGPT),
+      Claude: resolveProviderModel('Claude', loaded.Claude),
+      Mistral: resolveProviderModel('Mistral', loaded.Mistral),
+      Grok: resolveProviderModel('Grok', loaded.Grok),
+    };
+  });
+
   useEffect(() => {
     localStorage.setItem("aiModel", aiModel);
   }, [aiModel]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("aiProviderModels", JSON.stringify(aiProviderModel));
+    } catch (e) {
+      console.error("Failed to persist aiProviderModels", e);
+    }
+  }, [aiProviderModel]);
 
   useEffect(() => {
     try {
@@ -1555,7 +1610,7 @@ useEffect(() => {
             const response = await fetch('/api/ai/description', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ prompt, systemInstruction, apiKey: activeApiKey.trim(), provider: aiModel, aiModelName: aiModel }),
+              body: JSON.stringify({ prompt, systemInstruction, apiKey: activeApiKey.trim(), provider: aiModel, aiModelName: aiModel, model: aiProviderModel[aiModel] }),
               signal: descriptionAbortController.current.signal
             });
             
@@ -6640,6 +6695,27 @@ useEffect(() => {
                                 />
                               </div>
 
+                              {/* Selectable model for the active provider */}
+                              <div className="space-y-1.5">
+                                <label className="text-xs text-slate-400 font-medium flex justify-between items-center">
+                                  <span>Model ({aiModel})</span>
+                                  <span className="text-[10px] font-mono text-slate-400">
+                                    {aiProviderModel[aiModel]}
+                                  </span>
+                                </label>
+                                <CustomDropdown
+                                  value={aiProviderModel[aiModel]}
+                                  options={AI_PROVIDER_MODELS[aiModel].map(m => ({ value: m.id, label: m.label }))}
+                                  onChange={(val) => {
+                                    setAiProviderModel(prev => ({ ...prev, [aiModel]: resolveProviderModel(aiModel, val) }));
+                                  }}
+                                  uiAnimations={uiAnimations}
+                                  uiAnimSpeed={uiAnimSpeed}
+                                  playTapSound={playTapSound}
+                                  volumePercent={tapVolume}
+                                />
+                              </div>
+
                               {/* Isolated Custom API Keys Section */}
                               <div className="space-y-2 pt-2 border-t border-slate-800/60">
                                 <div className="flex items-center justify-between">
@@ -8214,6 +8290,7 @@ useEffect(() => {
         aiModelName={aiModel}
         initialQuestion={aiResearcherQuestion}
         onExecuteAction={handleAIAction}
+        aiProviderModel={aiProviderModel[aiModel]}
         resolveBodyDetails={resolveBodyDetails}
         currentSettings={{
           speedMultiplier,
@@ -8244,6 +8321,7 @@ useEffect(() => {
       <GeminiSidePanel
         isOpen={isGeminiSidePanelOpen}
         aiModelName={aiModel}
+        aiProviderModel={aiProviderModel[aiModel]}
         onClose={() => {
           setIsGeminiSidePanelOpen(false);
           setGeminiSidePanelQuestion(null);

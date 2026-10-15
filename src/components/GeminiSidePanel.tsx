@@ -38,6 +38,7 @@ interface GeminiSidePanelProps {
   initialQuestion?: string | null;
   onExecuteAction?: (action: any) => void;
   aiModelName?: string;
+  aiProviderModel?: string;
   currentSettings?: {
     speedMultiplier: number;
     showOrbits: boolean;
@@ -75,6 +76,7 @@ export const GeminiSidePanel: React.FC<GeminiSidePanelProps> = ({
   initialQuestion = null,
   onExecuteAction,
   aiModelName = "Gemini",
+  aiProviderModel,
   currentSettings
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -207,7 +209,8 @@ NO SIMULATOR CONTROL OR ACTION TRIGGERS IN SIDE PANEL:
           messages: chatHistory.current,
           systemInstruction,
           apiKey: apiKey.trim(),
-          provider: aiModelName
+          provider: aiModelName,
+          model: aiProviderModel
         })
       });
 

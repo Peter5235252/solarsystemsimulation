@@ -260,7 +260,20 @@ async function startServer() {
   };
 
   // Helper to run other providers (ChatGPT GPT-5.6, Claude 5, Mistral, Grok 4.6)
-  const callOtherProvider = async (provider: string, apiKey: string, systemInstruction: string, messages: any[], searchSources: UniversalSource[] = [], isDescriptionRequest = false) => {
+  // Selectable model catalog (Oct 2026). First entry per provider is the default.
+  const PROVIDER_MODEL_ALLOWLIST: Record<string, string[]> = {
+    ChatGPT: ["gpt-6.1-sol", "gpt-6-luna"],
+    OpenAI: ["gpt-6.1-sol", "gpt-6-luna"],
+    Claude: ["claude-sonnet-5-5", "claude-haiku-5-5"],
+    Anthropic: ["claude-sonnet-5-5", "claude-haiku-5-5"],
+    Grok: ["grok-4.7"],
+    SpaceXSI: ["grok-4.7"],
+    Mistral: ["mistral-small-latest"],
+  };
+  const callOtherProvider = async (provider: string, apiKey: string, systemInstruction: string, messages: any[], searchSources: UniversalSource[] = [], isDescriptionRequest = false, requestedModel = "") => {
+    const allowedModels = PROVIDER_MODEL_ALLOWLIST[provider] ?? [];
+    const primaryModel = allowedModels.includes(requestedModel) ? requestedModel : allowedModels[0];
+    const fallbackModel = allowedModels.find((m) => m !== primaryModel);
     let url = "";
     let headers: any = { "Content-Type": "application/json" };
     let body: any = {};
@@ -368,7 +381,7 @@ Synthesize your response using these verified live search findings alongside cor
       url = "https://api.openai.com/v1/chat/completions";
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = {
-        model: "gpt-5.6-sol", // 2026 Frontier Flagship with fallback to gpt-4o-mini
+        model: primaryModel || "gpt-6.1-sol",
         messages: [{ role: "system", content: validSystemPrompt }, ...standardMessages]
       };
     } else if (provider === "Claude" || provider === "Anthropic") {
@@ -383,7 +396,7 @@ Synthesize your response using these verified live search findings alongside cor
       }
       
       body = {
-        model: "claude-sonnet-5", // 2026 Production Agent model with fallback to claude-3-5-haiku
+        model: primaryModel || "claude-sonnet-5-5",
         max_tokens: 2048,
         system: validSystemPrompt,
         messages: filteredMessages.length > 0 ? filteredMessages : [{ role: 'user', content: 'Hello' }]
@@ -392,14 +405,14 @@ Synthesize your response using these verified live search findings alongside cor
       url = "https://api.mistral.ai/v1/chat/completions";
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = {
-        model: "mistral-small-latest",
+        model: primaryModel || "mistral-small-latest",
         messages: [{ role: "system", content: validSystemPrompt }, ...standardMessages]
       };
     } else if (provider === "Grok" || provider === "SpaceXSI" || provider === "SpaceXAI" || provider === "xAI") {
       url = "https://api.x.ai/v1/chat/completions";
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = {
-        model: "grok-4.6",
+        model: primaryModel || "grok-4.7",
         messages: [{ role: "system", content: validSystemPrompt }, ...standardMessages]
       };
     } else {
@@ -410,17 +423,8 @@ Synthesize your response using these verified live search findings alongside cor
       let res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
       if (!res.ok) {
         // Fallback to secondary model if primary tier is restricted for specific keys
-        if (provider === "ChatGPT" || provider === "OpenAI") {
-          body.model = "gpt-4o-mini";
-          res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-        } else if (provider === "Claude" || provider === "Anthropic") {
-          body.model = "claude-3-5-haiku-20241022";
-          res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-        } else if (provider === "Mistral") {
-          body.model = "open-mistral-7b";
-          res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-        } else if (provider === "Grok" || provider === "SpaceXSI" || provider === "SpaceXAI" || provider === "xAI") {
-          body.model = "grok-beta";
+        if (fallbackModel && body.model !== fallbackModel) {
+          body.model = fallbackModel;
           res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
         }
       }
@@ -561,7 +565,7 @@ Synthesize your response using these verified live search findings alongside cor
 
   // API Routes
   app.post("/api/ai/description", async (req, res) => {
-    const { prompt, systemInstruction, apiKey, provider, aiModelName } = req.body;
+    const { prompt, systemInstruction, apiKey, provider, aiModelName, model } = req.body;
     const targetProvider = provider || aiModelName || "Gemini";
     const isGemini = !targetProvider || targetProvider.toLowerCase().includes("gemini");
     
@@ -584,7 +588,7 @@ Synthesize your response using these verified live search findings alongside cor
       const usedProvider = isGemini ? "Gemini" : targetProvider;
 
       if (!isGemini) {
-        text = await callOtherProvider(targetProvider, apiKey.trim(), sysInst, [{ role: 'user', content: prompt }], [], true);
+        text = await callOtherProvider(targetProvider, apiKey.trim(), sysInst, [{ role: 'user', content: prompt }], [], true, typeof model === 'string' ? model : '');
       } else {
         text = await callGeminiProvider(apiKey.trim(), sysInst, prompt, [], true);
       }
@@ -599,7 +603,7 @@ Synthesize your response using these verified live search findings alongside cor
 
   // Real-time Chat with Universal Web Search RAG across all LLMs
   app.post("/api/ai/chat", async (req, res) => {
-    const { messages, systemInstruction, apiKey, provider, aiModelName, webSearch } = req.body;
+    const { messages, systemInstruction, apiKey, provider, aiModelName, webSearch, model } = req.body;
     const targetProvider = provider || aiModelName || "Gemini";
     const isGemini = !targetProvider || targetProvider.toLowerCase().includes("gemini");
     
@@ -645,7 +649,7 @@ Synthesize your response using these verified live search findings alongside cor
       const usedProvider = isGemini ? "Gemini" : targetProvider;
 
       if (!isGemini) {
-        text = await callOtherProvider(targetProvider, apiKey.trim(), sysInst, messages || [], sources);
+        text = await callOtherProvider(targetProvider, apiKey.trim(), sysInst, messages || [], sources, false, typeof model === 'string' ? model : '');
       } else {
         text = await callGeminiProvider(apiKey.trim(), sysInst, messages || [], sources);
       }
