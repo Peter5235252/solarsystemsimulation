@@ -28,6 +28,7 @@ import { CustomDropdown } from './CustomDropdown';
 import { CitationPill, formatCitationsInText } from './CitationPill';
 import CosmicDust from './CosmicDust';
 import { parseAIActionsAndCleanText, getDispatchedActionInfo, AIAction } from '../utils/aiActionParser';
+import { parseIntelligentBlocks, stripIntelligentBlocks, IntelligentBlockView, IntelligentBlock, BodyCardData } from './IntelligentBlocks';
 import { 
   CELESTIAL_DOSSIERS, 
   SPACE_MISSIONS, 
@@ -76,6 +77,7 @@ interface Message {
   pendingActions?: AIAction[];
   actionStatus?: 'pending' | 'approved' | 'rejected';
   suggestedFollowUps?: string[];
+  intelligentUI?: IntelligentBlock[];
   sources?: SearchSource[];
   isWebSearchGrounded?: boolean;
   searchQuery?: string;
@@ -103,6 +105,7 @@ interface AIResearcherProps {
   initialQuestion?: string | null;
   onExecuteAction?: (action: any) => void;
   aiModelName?: string;
+  resolveBodyDetails?: (id: string) => BodyCardData | undefined;
   currentSettings?: {
     speedMultiplier: number;
     showOrbits: boolean;
@@ -141,6 +144,7 @@ const AIResearcher: React.FC<AIResearcherProps> = ({
   geminiApiKey = "",
   initialQuestion = null,
   onExecuteAction,
+  resolveBodyDetails,
   currentSettings,
   aiModelName = "Gemini"
 }) => {
@@ -1475,7 +1479,8 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
         throw new Error(errJson.detail || errJson.error || 'API response not ok');
       }
 
-      const { cleanedText, actions: actionsToExecute } = parseAIActionsAndCleanText(fullText);
+      const { cleaned: uiCleanedText, blocks: intelligentBlocks } = parseIntelligentBlocks(fullText);
+      const { cleanedText, actions: actionsToExecute } = parseAIActionsAndCleanText(uiCleanedText);
 
       // Generate contextual follow-up ideas
       const followUps: string[] = [];
@@ -1498,6 +1503,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
         text: cleanedText,
         timestamp: Date.now(),
         pendingActions: actionsToExecute.length > 0 ? actionsToExecute : undefined,
+        intelligentUI: intelligentBlocks.length > 0 ? intelligentBlocks : undefined,
         actionStatus: actionsToExecute.length > 0 ? 'pending' : undefined,
         suggestedFollowUps: followUps.slice(0, 2),
         sources: searchSources,
@@ -1950,12 +1956,8 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                             <div className={`flex gap-3.5 max-w-[92%] sm:max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                               
                               {/* Avatar */}
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                                isUser 
-                                  ? 'bg-slate-800/80 border-white/20 text-slate-200 shadow-sm' 
-                                  : 'bg-slate-900/90 border-white/10 text-slate-300 shadow-sm'
-                              }`}>
-                                {isUser ? <User className="w-4 h-4 text-slate-300" /> : <Bot className="w-4 h-4 text-slate-300" />}
+                              <div className="w-9 h-9 flex items-center justify-center shrink-0 text-slate-400">
+                                {isUser ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
                               </div>
 
                               {/* Message Content Bubble */}
@@ -2005,6 +2007,15 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                                     </Markdown>
                                   </div>
 
+                                  {/* Intelligent UI blocks (tappable actions, comparisons, steppers) */}
+                                  {!isUser && msg.intelligentUI && msg.intelligentUI.length > 0 && (
+                                    <IntelligentBlockView
+                                      blocks={msg.intelligentUI}
+                                      onRunAction={(label, action) => handleForceDispatchAction(label, action)}
+                                      resolveBody={resolveBodyDetails}
+                                    />
+                                  )}
+
                                   {/* Render Attached Files if present */}
                                   {msg.attachments && msg.attachments.length > 0 && (
                                     <div className="mt-2.5 pt-2 border-t border-white/10 flex flex-wrap gap-2">
@@ -2036,7 +2047,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                                           onClick={() => toggleExpandSources(msg.id)}
                                           className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-950/60 hover:bg-slate-950/90 border border-white/10 text-xs text-slate-300 hover:text-white transition-all group active:scale-[0.98]"
                                         >
-                                          <Globe className="w-3.5 h-3.5 text-slate-300 animate-pulse shrink-0" />
+                                          <Globe className="w-3.5 h-3.5 text-slate-300 shrink-0" />
                                           <span className="font-medium text-slate-200">
                                             {expandedSourcesMsgIds.has(msg.id) ? 'Hide' : 'View'} Live Grounding Sources ({msg.sources.length})
                                           </span>
@@ -2305,8 +2316,8 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                           className="flex justify-start"
                         >
                           <div className="flex gap-3.5 max-w-[85%]">
-                            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border border-white/10 bg-slate-900/90 text-slate-300">
-                              <Bot className="w-4 h-4 text-slate-300" />
+                            <div className="w-9 h-9 flex items-center justify-center shrink-0 text-slate-400">
+                              <Bot className="w-5 h-5" />
                             </div>
                             <div className="relative px-5 py-4 rounded-2xl bg-slate-900/90 text-slate-200 border border-white/10 rounded-tl-none shadow-xl select-text cursor-text">
                               <div className="text-[13.5px] leading-relaxed font-light tracking-wide select-text cursor-text">
@@ -2336,7 +2347,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                                     td: ({node, ...props}) => <td className="px-3.5 py-2.5 text-slate-300 border-r border-white/5 last:border-r-0 align-top font-light leading-relaxed" {...props} />,
                                   }}
                                 >
-                                  {streamingText + (streamingText.endsWith('\n') ? '' : ' ▍')}
+                                  {stripIntelligentBlocks(streamingText) + (streamingText.endsWith('\n') ? '' : ' ▍')}
                                 </Markdown>
                               </div>
                             </div>

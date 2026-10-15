@@ -66,6 +66,35 @@ const BODY_DETAILS: Record<string, {
   'virgo': { type: 'Constellation', mass: 'Stellar Region', temp: 'Varies', gravity: 'N/A', funFacts: ['The largest constellation of the Zodiac.', 'Contains the massive Virgo galaxy cluster.'] },
   'pegasus': { type: 'Constellation', mass: 'Stellar Region', temp: 'Varies', gravity: 'N/A', funFacts: ['Named after the winged horse of Greek mythology.', 'Contains the prominent Great Square asterism.'] }
 };
+
+const BODY_DISPLAY_NAMES: Record<string, string> = {
+  sun: 'Sun', mercury: 'Mercury', venus: 'Venus', earth: 'Earth', moon: 'Moon',
+  mars: 'Mars', jupiter: 'Jupiter', saturn: 'Saturn', titan: 'Titan', rhea: 'Rhea',
+  enceladus: 'Enceladus', dione: 'Dione', tethys: 'Tethys', uranus: 'Uranus',
+  neptune: 'Neptune', pluto: 'Pluto', charon: 'Charon', iss: 'ISS',
+  voyager1: 'Voyager 1', voyager2: 'Voyager 2', newhorizons: 'New Horizons',
+  cassini: 'Cassini', jwst: 'JWST', apollo11: 'Apollo 11', hubble: 'Hubble',
+  sagittarius_a: 'Sagittarius A*', m87_star: 'M87*', cygnus_x1: 'Cygnus X-1',
+  orion: 'Orion', ursa_major: 'Ursa Major', cassiopeia: 'Cassiopeia',
+  scorpius: 'Scorpius', cygnus: 'Cygnus', crux: 'Crux', canis_major: 'Canis Major',
+  lyra: 'Lyra', virgo: 'Virgo', pegasus: 'Pegasus',
+};
+
+/** Resolve a body id to card data for Intelligent UI comparisons. */
+function resolveBodyDetails(id: string) {
+  const key = id.toLowerCase().replace(/[\s-]+/g, '_');
+  const details = (BODY_DETAILS as Record<string, any>)[key];
+  if (!details) return undefined;
+  return {
+    id: key,
+    name: BODY_DISPLAY_NAMES[key] ?? key,
+    type: details.type as string,
+    mass: details.mass as string | undefined,
+    gravity: details.gravity as string | undefined,
+    temp: details.temp as string | undefined,
+    funFact: Array.isArray(details.funFacts) ? details.funFacts[0] as string : undefined,
+  };
+}
 const PLANETS = [
   { id: 'sun', name: 'Sun', color: '#fbbf24', radius: 45, distance: 0, speed: 0, sides: 12, desc: 'The Sun is a yellow dwarf star at the heart of our solar system, providing the energy that sustains all life on Earth.' },
   { id: 'mercury', name: 'Mercury', color: '#a8a29e', radius: 6, distance: 85, speed: 0.04, sides: 5, desc: 'Mercury is the smallest and fastest planet in the solar system, orbiting closest to the Sun with extreme temperature variances.' },
@@ -185,11 +214,11 @@ export const AI_PROVIDERS_META: Record<AiModelType, AiProviderMeta> = {
   Grok: {
     id: 'Grok',
     name: 'Grok',
-    provider: 'SpaceXAI',
+    provider: 'SpaceXSI',
     badge: 'Grok 4.6 / Grok Beta',
     keyPlaceholder: 'Input API key here...',
     keyPrefixHint: '',
-    description: 'Requires SpaceXAI API key for Grok endpoints.',
+    description: 'Requires SpaceXSI API key for Grok endpoints.',
   },
 };
 
@@ -279,7 +308,7 @@ const HDModeModal = ({ isOpen, onClose, onConfirm, playTapSound, title, desc, bt
                 </button>
                 <button 
                   onClick={() => { playTapSound(); onConfirm(); }} 
-                  className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold active:scale-[0.98] active:opacity-80 active:duration-75 transition-all shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:shadow-[0_0_20px_rgba(245,158,11,0.5)] outline-none"
+                  className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold active:scale-[0.98] active:opacity-80 active:duration-75 transition-all outline-none"
                 >
                   {btnConfirm}
                 </button>
@@ -5234,7 +5263,7 @@ useEffect(() => {
         category: 'Settings',
         title: 'AI Stellar Guide Descriptions',
         subtitle: `Use ${aiModel} for real-time body explanations`,
-        keywords: ['ai', 'gemini', 'chatgpt', 'claude', 'mistral', 'grok', 'spacexai', 'spacex', 'guide', 'descriptions', 'stellar', 'assistant'],
+        keywords: ['ai', 'gemini', 'chatgpt', 'claude', 'mistral', 'grok', 'spacexsi', 'spacexai', 'spacex', 'guide', 'descriptions', 'stellar', 'assistant'],
         icon: <Bot className="w-4 h-4 text-slate-400" />,
         badge: useAI ? 'ON' : 'OFF',
         badgeType: useAI ? 'active' : 'inactive',
@@ -5420,7 +5449,7 @@ useEffect(() => {
         category: 'Tools',
         title: 'AI Space Researcher & Assistant',
         subtitle: useAI ? `Inquire about space science powered by ${aiModel}` : 'AI Assistance is disabled in settings',
-        keywords: ['ai', 'researcher', 'gemini', 'chatgpt', 'claude', 'mistral', 'grok', 'spacexai', 'spacex', 'assistant', 'ask', 'question', 'physics', 'astronomy'],
+        keywords: ['ai', 'researcher', 'gemini', 'chatgpt', 'claude', 'mistral', 'grok', 'spacexsi', 'spacexai', 'spacex', 'assistant', 'ask', 'question', 'physics', 'astronomy'],
         icon: <Bot className="w-4 h-4 text-slate-400" />,
         badge: useAI ? aiModel.toUpperCase() : 'DISABLED',
         badgeType: useAI ? 'info' : 'inactive',
@@ -5506,7 +5535,7 @@ useEffect(() => {
     { value: 'ChatGPT', label: 'ChatGPT (OpenAI)' },
     { value: 'Claude', label: 'Claude (Anthropic)' },
     { value: 'Mistral', label: 'Mistral AI' },
-    { value: 'Grok', label: 'Grok (SpaceXAI)' },
+    { value: 'Grok', label: 'Grok (SpaceXSI)' },
   ], []);
 
   const compareBodyOptions: DropdownOption[] = useMemo(() => {
@@ -5864,7 +5893,7 @@ useEffect(() => {
         <button 
           onPointerDown={() => { if (!isAIResearcherOpen) playTapSound(); }}
           onClick={() => { if (!isAIResearcherOpen) setIsSearchOpen(true); }} 
-          className={`p-3 dual-kawase-glass-subtle glass-specular shadow-2xl rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-900 hover:border-slate-700/50 transition-all duration-300 outline-none active:scale-[0.98] active:opacity-80 active:duration-75 flex items-center gap-2 ${isAIResearcherOpen ? 'opacity-40 cursor-not-allowed' : ''}`}
+          className={`p-3 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all duration-300 outline-none active:scale-[0.98] active:opacity-80 active:duration-75 flex items-center gap-2 ${isAIResearcherOpen ? 'opacity-40 cursor-not-allowed' : ''}`}
           title={`${t.ui_search} (/)`}
           disabled={isAIResearcherOpen}
         >
@@ -5880,7 +5909,7 @@ useEffect(() => {
               transition={uiAnimations ? { duration: 0.3 / uiAnimSpeed } : { duration: 0 }}
               onPointerDown={() => { if (!isSearchOpen && !isAIResearcherOpen) playTapSound(); }}
               onClick={() => { if (!isSearchOpen) setIsAIResearcherOpen(true); }} 
-              className={`p-3 dual-kawase-glass-subtle glass-specular shadow-2xl rounded-xl text-slate-400 hover:text-slate-400 hover:bg-slate-700/40 hover:border-slate-600/50 transition-all duration-300 outline-none active:scale-[0.98] active:opacity-80 active:duration-75 flex items-center gap-2 ${isSearchOpen ? 'opacity-40 cursor-not-allowed' : ''}`}
+              className={`p-3 rounded-xl text-slate-400 hover:text-slate-400 hover:bg-white/5 transition-all duration-300 outline-none active:scale-[0.98] active:opacity-80 active:duration-75 flex items-center gap-2 ${isSearchOpen ? 'opacity-40 cursor-not-allowed' : ''}`}
               title="Stellar AI Researcher (*)"
               disabled={isSearchOpen}
             >
@@ -5891,14 +5920,14 @@ useEffect(() => {
         </AnimatePresence>
         <button 
           onClick={() => { playTapSound(); togglePause(); }} 
-          className="p-3 dual-kawase-glass-subtle glass-specular shadow-2xl rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-900 hover:border-slate-700/50 transition-all duration-300 outline-none active:scale-[0.98] active:opacity-80 active:duration-75"
+          className="p-3 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all duration-300 outline-none active:scale-[0.98] active:opacity-80 active:duration-75"
           title={speedMultiplier === 0 ? t.ui_resume_orbit : t.ui_pause_orbit}
         >
           {speedMultiplier === 0 ? <Play className="w-5 h-5 text-slate-400" /> : <Pause className="w-5 h-5 text-slate-400" />}
         </button>
         <button 
           onClick={() => { playTapSound(); setIsSettingsOpen(true); }} 
-          className="p-3 dual-kawase-glass-subtle glass-specular shadow-2xl rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-900 hover:border-slate-700/50 transition-all duration-300 group outline-none active:scale-[0.98] active:opacity-80 active:duration-75"
+          className="p-3 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all duration-300 group outline-none active:scale-[0.98] active:opacity-80 active:duration-75"
           title={t.ui_settings}
         >
           <Settings className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" />
@@ -5944,9 +5973,7 @@ useEffect(() => {
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 bg-slate-950/20 border-b border-white/10 shrink-0">
                   <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 rounded-lg dual-kawase-glass-subtle border border-white/10 text-slate-300">
-                      <Sliders className="w-4 h-4" />
-                    </div>
+                    <Sliders className="w-5 h-5 text-slate-400 shrink-0" />
                     <h2 className="text-lg font-semibold text-slate-100">Settings</h2>
                   </div>
                   <button 
@@ -8187,6 +8214,7 @@ useEffect(() => {
         aiModelName={aiModel}
         initialQuestion={aiResearcherQuestion}
         onExecuteAction={handleAIAction}
+        resolveBodyDetails={resolveBodyDetails}
         currentSettings={{
           speedMultiplier,
           showOrbits,

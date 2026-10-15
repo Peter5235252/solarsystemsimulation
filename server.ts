@@ -280,7 +280,19 @@ async function startServer() {
         simulatorPrompt = `\n\n[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION]
 - You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads.
 - Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing), ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
-- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.`;
+- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.
+- INTELLIGENT UI BLOCKS (use sparingly — when plain text alone answers best, emit NOTHING extra): when an interactive element would genuinely help — a one-tap simulator shortcut, a side-by-side comparison, or a step-by-step walkthrough — you may append fenced :::ui-* blocks AFTER the ACTION_TRIGGER payload (or alone when no simulator action applies). Our UI renders them as native tappable glass components.
+  Strict formats (fenced blocks, valid JSON payloads):
+  :::ui-actions
+  [{"label":"Focus Saturn","action":{"type":"select_planet","id":"saturn"}}]
+  :::
+  :::ui-compare
+  {"left":"earth","right":"mars"}
+  :::
+  :::ui-steps
+  {"title":"How seasons work","steps":[{"title":"Tilt","text":"..."}]}
+  :::
+  Rules: action objects MUST use the same schema as ACTION_TRIGGER payloads (valid simulator action types only); compare ids MUST be known celestial body ids (sun, mercury, venus, earth, moon, mars, jupiter, saturn, titan, rhea, enceladus, dione, tethys, uranus, neptune, pluto, charon, iss, voyager1, voyager2, newhorizons, cassini, jwst, apollo11, hubble, sagittarius_a, m87_star, cygnus_x1, orion, ursa_major, cassiopeia, scorpius, cygnus, crux, canis_major, lyra, virgo, pegasus); keep labels short, max 4 action buttons, max 6 steps.`;
       }
 
       const MANDATORY_FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
@@ -383,7 +395,7 @@ Synthesize your response using these verified live search findings alongside cor
         model: "mistral-small-latest",
         messages: [{ role: "system", content: validSystemPrompt }, ...standardMessages]
       };
-    } else if (provider === "Grok" || provider === "SpaceXAI" || provider === "xAI") {
+    } else if (provider === "Grok" || provider === "SpaceXSI" || provider === "SpaceXAI" || provider === "xAI") {
       url = "https://api.x.ai/v1/chat/completions";
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = {
@@ -407,7 +419,7 @@ Synthesize your response using these verified live search findings alongside cor
         } else if (provider === "Mistral") {
           body.model = "open-mistral-7b";
           res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-        } else if (provider === "Grok" || provider === "SpaceXAI" || provider === "xAI") {
+        } else if (provider === "Grok" || provider === "SpaceXSI" || provider === "SpaceXAI" || provider === "xAI") {
           body.model = "grok-beta";
           res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
         }
@@ -468,7 +480,19 @@ Synthesize your response using these verified live search findings alongside cor
         simulatorPrompt = `\n\n[SIMULATOR CONTROL & INTERACTIVE APPROVAL INTEGRATION]
 - You have direct real-time control over the solar system simulation engine via ACTION_TRIGGER JSON payloads.
 - Whenever you suggest, discuss, recommend, or perform a simulation action (e.g. focusing on a planet, changing speed, toggling orbits/labels/spacecraft/asteroids, opening settings/modals, or pausing), ALWAYS APPEND THE RELEVANT ACTION_TRIGGER PAYLOAD at the very end of your response.
-- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.`;
+- DO NOT ask the user for confirmation in plain text without including the ACTION_TRIGGER payload. Our application UI automatically catches your ACTION_TRIGGER payload and presents an interactive Approval Prompt UI ([Approve] / [Reject]) before executing it on the 3D canvas.
+- INTELLIGENT UI BLOCKS (use sparingly — when plain text alone answers best, emit NOTHING extra): when an interactive element would genuinely help — a one-tap simulator shortcut, a side-by-side comparison, or a step-by-step walkthrough — you may append fenced :::ui-* blocks AFTER the ACTION_TRIGGER payload (or alone when no simulator action applies). Our UI renders them as native tappable glass components.
+  Strict formats (fenced blocks, valid JSON payloads):
+  :::ui-actions
+  [{"label":"Focus Saturn","action":{"type":"select_planet","id":"saturn"}}]
+  :::
+  :::ui-compare
+  {"left":"earth","right":"mars"}
+  :::
+  :::ui-steps
+  {"title":"How seasons work","steps":[{"title":"Tilt","text":"..."}]}
+  :::
+  Rules: action objects MUST use the same schema as ACTION_TRIGGER payloads (valid simulator action types only); compare ids MUST be known celestial body ids (sun, mercury, venus, earth, moon, mars, jupiter, saturn, titan, rhea, enceladus, dione, tethys, uranus, neptune, pluto, charon, iss, voyager1, voyager2, newhorizons, cassini, jwst, apollo11, hubble, sagittarius_a, m87_star, cygnus_x1, orion, ursa_major, cassiopeia, scorpius, cygnus, crux, canis_major, lyra, virgo, pegasus); keep labels short, max 4 action buttons, max 6 steps.`;
       }
 
       const MANDATORY_FACTUALITY_PROMPT = `\n\n[STRICT FACTUALITY & WEB GROUNDING DIRECTIVE (AUGUST 2026)]
