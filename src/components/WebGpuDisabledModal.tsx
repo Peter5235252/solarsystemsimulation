@@ -58,9 +58,7 @@ export const WebGpuDisabledModal: React.FC<WebGpuDisabledModalProps> = ({
         >
           {/* Top Status Banner */}
           <div className="bg-gradient-to-r from-rose-950/80 via-red-900/40 to-slate-900 border-b border-rose-500/20 p-5 sm:p-6 flex items-start gap-4">
-            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 shrink-0">
-              <ShieldAlert className="w-8 h-8 animate-pulse" />
-            </div>
+            <ShieldAlert className="w-8 h-8 text-rose-400 shrink-0" />
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">

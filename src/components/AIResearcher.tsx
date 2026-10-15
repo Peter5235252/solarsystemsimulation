@@ -1786,9 +1786,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-5 py-3.5 bg-slate-950/20 border-b border-white/10 z-30 shrink-0 gap-3">
                 {/* Brand & Subtle Powered By Tag */}
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-900/80 border border-white/10 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-5 h-5 text-slate-300" />
-                  </div>
+                  <Sparkles className="w-6 h-6 text-slate-400 shrink-0" />
                   <div>
                     <div className="flex items-center gap-2.5">
                       <h2 className="text-base font-bold tracking-tight text-slate-100 flex items-center gap-2">
@@ -2610,9 +2608,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                                   }}
                                   className="w-full p-2.5 rounded-xl flex items-center gap-3 hover:bg-slate-800/80 border border-transparent hover:border-white/10 transition-all text-left group active:scale-[0.98] cursor-pointer"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-slate-800/90 border border-white/10 flex items-center justify-center shrink-0 group-hover:border-white/20 transition-colors text-slate-300 group-hover:text-white">
-                                    <FileUp className="w-4 h-4" />
-                                  </div>
+                                  <FileUp className="w-5 h-5 text-slate-400 group-hover:text-white shrink-0 transition-colors" />
                                   <div className="flex-1 min-w-0">
                                     <div className="text-xs font-medium text-slate-200 group-hover:text-white flex items-center justify-between">
                                       <span>Upload Document or Image</span>
@@ -2629,9 +2625,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                                   onClick={captureViewportSnapshot}
                                   className="w-full p-2.5 rounded-xl flex items-center gap-3 hover:bg-slate-800/80 border border-transparent hover:border-white/10 transition-all text-left group active:scale-[0.98] cursor-pointer"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-slate-800/90 border border-white/10 flex items-center justify-center shrink-0 group-hover:border-white/20 transition-colors text-slate-300 group-hover:text-white">
-                                    <Camera className="w-4 h-4" />
-                                  </div>
+                                  <Camera className="w-5 h-5 text-slate-400 group-hover:text-white shrink-0 transition-colors" />
                                   <div className="flex-1 min-w-0">
                                     <div className="text-xs font-medium text-slate-200 group-hover:text-white flex items-center justify-between">
                                       <span>Capture Viewport Snapshot</span>
@@ -2648,9 +2642,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                                   onClick={attachTelemetryState}
                                   className="w-full p-2.5 rounded-xl flex items-center gap-3 hover:bg-slate-800/80 border border-transparent hover:border-white/10 transition-all text-left group active:scale-[0.98] cursor-pointer"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-slate-800/90 border border-white/10 flex items-center justify-center shrink-0 group-hover:border-white/20 transition-colors text-slate-300 group-hover:text-white">
-                                    <FileCode className="w-4 h-4" />
-                                  </div>
+                                  <FileCode className="w-5 h-5 text-slate-400 group-hover:text-white shrink-0 transition-colors" />
                                   <div className="flex-1 min-w-0">
                                     <div className="text-xs font-medium text-slate-200 group-hover:text-white flex items-center justify-between">
                                       <span>Attach Simulation Telemetry</span>
@@ -3317,9 +3309,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                       >
                         <div className="flex items-center justify-between border-b border-white/10 pb-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-slate-800 border border-white/10 flex items-center justify-center text-slate-300">
-                              <FileText className="w-3.5 h-3.5" />
-                            </div>
+                            <FileText className="w-5 h-5 text-slate-400 shrink-0" />
                             <span className="text-sm font-semibold text-slate-100">
                               {editingNoteId ? 'Edit Research Note' : 'New Research Note'}
                             </span>
@@ -3701,9 +3691,7 @@ EXACT 15 SUPPORTED ACTION TYPES AND PARAMETER SCHEMAS:
                   {/* Empty State */}
                   {savedNotes.length === 0 && !isCreatingNote ? (
                     <div className="flex-1 flex flex-col items-center justify-center py-16 text-center space-y-4">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-white/10 flex items-center justify-center text-slate-500">
-                        <Bookmark className="w-6 h-6 text-slate-500" />
-                      </div>
+                      <Bookmark className="w-8 h-8 text-slate-600" />
                       <div className="space-y-1">
                         <h4 className="text-sm font-semibold text-slate-300">No Saved Notes Yet</h4>
                         <p className="text-xs text-slate-500 max-w-sm font-light">

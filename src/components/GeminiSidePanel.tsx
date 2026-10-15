@@ -321,9 +321,7 @@ NO SIMULATOR CONTROL OR ACTION TRIGGERS IN SIDE PANEL:
           {/* Header */}
           <div className="flex items-center justify-between p-3.5 px-4 bg-slate-950/20 border-b border-white/10 shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-slate-900/80 border border-slate-700/60 flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-slate-300 animate-pulse" />
-              </div>
+              <Sparkles className="w-5 h-5 text-slate-400 shrink-0" />
               <div>
                 <h3 className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
                   <span>{aiModelName} Sidekick</span>
@@ -382,9 +380,7 @@ NO SIMULATOR CONTROL OR ACTION TRIGGERS IN SIDE PANEL:
                 className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {msg.role === 'model' && (
-                  <div className="w-6 h-6 rounded-lg bg-slate-800/40 border border-slate-700/60 flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot className="w-3 h-3 text-slate-400" />
-                  </div>
+                  <Bot className="w-4 h-4 text-slate-500 shrink-0 mt-1" />
                 )}
                 
                 <div className={`p-3 rounded-xl max-w-[85%] leading-relaxed shadow select-text cursor-text ${
@@ -536,18 +532,14 @@ NO SIMULATOR CONTROL OR ACTION TRIGGERS IN SIDE PANEL:
                 </div>
 
                 {msg.role === 'user' && (
-                  <div className="w-6 h-6 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 mt-0.5">
-                    <User className="w-3 h-3 text-slate-300" />
-                  </div>
+                  <User className="w-4 h-4 text-slate-500 shrink-0 mt-1" />
                 )}
               </motion.div>
             ))}
 
             {streamingText && (
               <div className="flex gap-2.5 justify-start">
-                <div className="w-6 h-6 rounded-lg bg-slate-800/40 border border-slate-700/60 flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="w-3 h-3 text-slate-400" />
-                </div>
+                <Bot className="w-4 h-4 text-slate-500 shrink-0 mt-1" />
                 <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-slate-200 rounded-tl-none max-w-[85%] leading-relaxed select-text cursor-text">
                   <Markdown
                     remarkPlugins={[remarkGfm, remarkMath]}
